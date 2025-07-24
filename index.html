@@ -13,9 +13,45 @@
     canvas {
       display: block;
     }
+    #scoreboard {
+      position: absolute;
+      color: white;
+      font-family: sans-serif;
+      top: 10px;
+      left: 10px;
+      font-size: 20px;
+      z-index: 2;
+    }
+    #startScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      font-family: sans-serif;
+      font-size: 24px;
+      z-index: 3;
+    }
+    #startButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
+  <div id="scoreboard">Score: 0 | Lives: 3 | High Score: 0</div>
+  <div id="startScreen">
+    <div>🚀 Xollent Space Shooter</div>
+    <button id="startButton">Start Game</button>
+  </div>
   <canvas id="gameCanvas"></canvas>
 
   <script>
@@ -23,6 +59,20 @@
     const ctx = canvas.getContext("2d");
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+
+    const shootSound = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
+    const hitSound = new Audio("https://actions.google.com/sounds/v1/explosions/explosion.ogg");
+    const backgroundImage = new Image();
+    backgroundImage.src = "https://images.unsplash.com/photo-1532298488760-970ff6decf61?auto=format&fit=crop&w=1500&q=80";
+    const shipImage = new Image();
+    shipImage.src = "image/ship.png";
+
+    let score = 0;
+    let lives = 3;
+    let highScore = localStorage.getItem("xollentHighScore") || 0;
+    let gameStarted = false;
+    let difficultySpeed = 2;
+    let enemySpawnRate = 1000;
 
     class Spaceship {
       constructor() {
@@ -34,13 +84,7 @@
       }
 
       draw() {
-        ctx.fillStyle = "lime";
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x - this.width / 2, this.y + this.height);
-        ctx.lineTo(this.x + this.width / 2, this.y + this.height);
-        ctx.closePath();
-        ctx.fill();
+        ctx.drawImage(shipImage, this.x - this.width / 2, this.y, this.width, this.height);
       }
 
       move(dir) {
@@ -76,7 +120,7 @@
         this.y = y;
         this.width = 30;
         this.height = 30;
-        this.speed = 2;
+        this.speed = difficultySpeed;
       }
 
       update() {
@@ -99,8 +143,18 @@
       enemies.push(new Enemy(x, -30));
     }
 
+    function updateScoreboard() {
+      document.getElementById("scoreboard").innerText = `Score: ${score} | Lives: ${lives} | High Score: ${highScore}`;
+    }
+
+    function increaseDifficulty() {
+      if (enemySpawnRate > 300) enemySpawnRate -= 50;
+      difficultySpeed += 0.2;
+    }
+
     function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!gameStarted) return;
+      ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
       spaceship.draw();
 
       bullets.forEach((bullet, index) => {
@@ -113,6 +167,7 @@
         enemy.update();
         enemy.draw();
 
+        // Bullet collision
         bullets.forEach((bullet, bIndex) => {
           if (
             bullet.x > enemy.x &&
@@ -122,8 +177,31 @@
           ) {
             enemies.splice(eIndex, 1);
             bullets.splice(bIndex, 1);
+            score += 10;
+            hitSound.play();
+            updateScoreboard();
+            if (score % 100 === 0) increaseDifficulty();
           }
         });
+
+        // Enemy hits player
+        if (
+          enemy.y + enemy.height > spaceship.y &&
+          enemy.x < spaceship.x + spaceship.width / 2 &&
+          enemy.x + enemy.width > spaceship.x - spaceship.width / 2
+        ) {
+          enemies.splice(eIndex, 1);
+          lives -= 1;
+          hitSound.play();
+          updateScoreboard();
+          if (lives <= 0) {
+            if (score > highScore) {
+              localStorage.setItem("xollentHighScore", score);
+            }
+            alert("Game Over! Your score: " + score);
+            document.location.reload();
+          }
+        }
       });
 
       if (keys["ArrowLeft"]) spaceship.move(-1);
@@ -132,19 +210,27 @@
       requestAnimationFrame(gameLoop);
     }
 
+    let spawnInterval;
+
+    document.getElementById("startButton").addEventListener("click", () => {
+      document.getElementById("startScreen").style.display = "none";
+      gameStarted = true;
+      spawnInterval = setInterval(spawnEnemy, enemySpawnRate);
+      updateScoreboard();
+      gameLoop();
+    });
+
     window.addEventListener("keydown", (e) => {
       keys[e.key] = true;
       if (e.key === " ") {
         bullets.push(new Bullet(spaceship.x, spaceship.y));
+        shootSound.play();
       }
     });
 
     window.addEventListener("keyup", (e) => {
       keys[e.key] = false;
     });
-
-    setInterval(spawnEnemy, 1000);
-    gameLoop();
   </script>
 </body>
 </html>
