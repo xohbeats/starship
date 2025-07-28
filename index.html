@@ -119,7 +119,7 @@
             border-radius: 12px; /* Slightly more rounded */
             padding: 15px;
             width: 180px; /* Fixed width for cards */
-            min-height: 250px; /* Ensure consistent height */
+            min-height: 250px;
             text-align: center;
             display: flex;
             flex-direction: column;
@@ -250,14 +250,6 @@
             font-size: 0.9em;
             color: #fff;
             text-shadow: 0 0 3px black;
-        }
-        .perk-indicator {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 5px 10px;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
         }
         .perk-indicator.cooldown {
             color: #ffcc00;
@@ -520,7 +512,7 @@
         let hasSpacebeam = false; // Unlocked via shop
         let spacebeamCooldown = 15000; // 15 seconds
         let lastSpacebeamTime = 0;
-        let spacebeamChargeTime = 1400; // 1.4 seconds for charging
+        let spacebeamChargeTime = 1400; // 1.4 seconds
         let spacebeamActiveDuration = 500; // 0.5 seconds
         let isSpacebeamCharging = false; // New state for charging
         let isSpacebeamFiring = false;
@@ -535,9 +527,30 @@
         // UFO Beam specific variables
         let ufoBeams = []; // Array to hold active UFO beams
         const UFO_BEAM_COOLDOWN = 5000; // 5 seconds
-        const UFO_BEAM_DURATION = 1000; // 1 second
+        const UFO_BEAM_CHARGE_DURATION = 1000; // 1 second charge time for UFO beam
+        const UFO_BEAM_ACTIVE_DURATION = 500; // 0.5 seconds active time for UFO beam
         const UFO_BEAM_DAMAGE = 1; // Damage per tick for UFO beam
         // --- END NEW PERK & ABILITY VARIABLES ---
+
+        // --- GAME STATE MANAGEMENT ---
+        let gameState = 'start'; // 'start', 'playing', 'levelCompleteAnimation', 'levelCompleteScreenDisplayed', 'shop', 'gameOver'
+        let animationStartTime = 0; // For level complete animation timing
+        // --- END GAME STATE MANAGEMENT ---
+
+        // Audio debounce for hit sounds
+        let lastHitSoundPlayTime = 0;
+        const hitSoundDebounceTime = 50; // milliseconds
+
+        // --- NEW PERK VARIABLES (in-game collectibles) ---
+        let perks = []; // Array to hold active in-game perk objects
+        const PERK_DROP_CHANCE = 0.15; // 15% chance for an enemy to drop a perk
+        const PERK_TYPES = ['heart', 'speedBoost', 'fireRateBoost'];
+        const PERK_DURATION = 5000; // 5 seconds for temporary boosts
+        let playerTempSpeedMultiplier = 1; // For speed boost perk
+        let playerTempFireRateMultiplier = 1; // For fire rate boost perk
+        let speedBoostEndTime = 0;
+        let fireRateBoostEndTime = 0;
+        // --- END NEW PERK VARIABLES ---
 
 
         // Tone.js setup for sound effects
@@ -559,6 +572,13 @@
                 release: 0.2
             }
         }).toDestination();
+
+        // New sound for collecting perks
+        const collectPerkSound = new Tone.Player("https://assets.mixkit.co/sfx/preview/mixkit-game-bonus-pickup-176.mp3"); // Changed URL
+        collectPerkSound.volume.value = -10;
+        collectPerkSound.toDestination();
+        collectPerkSound.onerror = () => console.error(`Failed to load collect perk sound: ${collectPerkSound.url}`);
+
 
         // --- NEW: Dynamic Laser Sounds ---
         const laserSounds = {
@@ -639,8 +659,8 @@
                 this.width = 80; // Display width of the ship (adjusted for new sprites)
                 this.height = 80; // Display height of the ship (adjusted for new sprites)
                 this.x = canvas.width / 2;
-                this.y = canvas.height - this.height - 30;
-                this.speed = 7;
+                this.y = canvas.height - this.height - 30; // Initial start position
+                this.speed = 7; // Base speed
                 this.dx = 0; // Delta X for smooth movement
                 this.dy = 0; // Delta Y for smooth movement
             }
@@ -696,8 +716,10 @@
             }
 
             move(dirX, dirY) {
-                this.dx = dirX * this.speed;
-                this.dy = dirY * this.speed;
+                // Apply temporary speed boost if active
+                const currentSpeed = this.speed * playerTempSpeedMultiplier;
+                this.dx = dirX * currentSpeed;
+                this.dy = dirY * currentSpeed;
             }
 
             update() {
@@ -712,23 +734,27 @@
                 if (this.y - this.height / 2 < 0) this.y = this.height / 2;
                 if (this.y + this.height / 2 > canvas.height) this.y = canvas.height - this.height / 2;
 
-                this.dx *= 0.8; // Decelerate X
-                this.dy *= 0.8; // Decelerate Y
+                // Deceleration
+                this.dx *= 0.8;
+                this.dy *= 0.8;
             }
         }
 
         // Player Bullet
         class Bullet {
-            constructor(x, y) {
+            constructor(x, y, angle = -Math.PI / 2) { // Default angle is straight up
                 this.x = x;
                 this.y = y;
                 this.radius = playerBulletRadius; // Dynamic radius
-                this.speed = 10;
+                this.speed = 10; // Base speed
                 this.damage = playerBulletDamage; // Dynamic damage
+                this.dx = this.speed * Math.cos(angle);
+                this.dy = this.speed * Math.sin(angle);
             }
 
             update() {
-                this.y -= this.speed;
+                this.x += this.dx;
+                this.y += this.dy;
             }
 
             draw() {
@@ -744,12 +770,13 @@
 
         // Enemy Bullet (fired by bosses/advanced enemies)
         class EnemyBullet {
-            constructor(x, y, targetX, targetY) {
+            constructor(x, y, targetX, targetY, color = "orange") { // Default to orange if not provided
                 this.x = x;
                 this.y = y;
                 this.radius = 6;
-                this.speed = 5; // Slower than player bullets
+                this.speed = 5; // Base speed
                 this.damage = 1; // Enemy bullets deal 1 damage
+                this.color = color;
 
                 // Calculate direction towards target
                 const angle = Math.atan2(targetY - y, targetX - x);
@@ -763,10 +790,10 @@
             }
 
             draw() {
-                ctx.fillStyle = "orange"; // Orange enemy bullet
+                ctx.fillStyle = this.color;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.shadowColor = "orange";
+                ctx.shadowColor = this.color;
                 ctx.shadowBlur = 8;
                 ctx.fill();
                 ctx.shadowBlur = 0; // Reset shadow
@@ -776,35 +803,112 @@
 
         // UFO Abduction Beam Class
         class UfoBeam {
-            constructor(ufoX, ufoY, ufoWidth) {
+            constructor(ufoX, ufoY, ufoWidth, timestamp) {
                 this.x = ufoX;
                 this.y = ufoY + ufoWidth / 2; // Start from bottom of UFO
                 this.width = ufoWidth * 0.8; // Beam width
                 this.height = canvas.height - this.y; // Extends to bottom of canvas
                 this.damage = UFO_BEAM_DAMAGE;
-                this.activeDuration = UFO_BEAM_DURATION;
-                this.startTime = performance.now();
+                this.chargeDuration = UFO_BEAM_CHARGE_DURATION; // New: charge time
+                this.activeDuration = UFO_BEAM_ACTIVE_DURATION; // New: active duration
+                this.startTime = timestamp; // When the beam started its charge
+                this.fireTime = this.startTime + this.chargeDuration; // When the beam becomes active
+                this.endTime = this.fireTime + this.activeDuration; // When the beam disappears
             }
 
             update(timestamp) {
-                // Beam is active for a fixed duration
-                if (timestamp - this.startTime > this.activeDuration) {
-                    return false; // Mark for removal
+                // Beam is active after charge time and for a fixed duration
+                if (timestamp < this.fireTime) {
+                    return 'charging'; // Still charging
+                } else if (timestamp >= this.fireTime && timestamp < this.endTime) {
+                    return 'active'; // Beam is active
                 }
-                return true; // Still active
+                return 'inactive'; // Mark for removal
             }
 
-            draw() {
+            draw(timestamp) {
+                const status = this.update(timestamp);
+                if (status === 'inactive') return;
+
                 ctx.save();
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Green beam
-                ctx.shadowColor = 'rgba(0, 255, 0, 1)';
-                ctx.shadowBlur = 15;
-                ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
+                if (status === 'charging') {
+                    const chargeProgress = (timestamp - this.startTime) / this.chargeDuration;
+                    const currentBeamHeight = this.height * chargeProgress;
+                    const currentBeamY = this.y + (this.height - currentBeamHeight); // Grow from bottom up
+
+                    ctx.fillStyle = `rgba(0, 255, 0, ${0.1 + chargeProgress * 0.3})`; // Faint green, increasing opacity
+                    ctx.shadowColor = 'rgba(0, 255, 0, 0.5)';
+                    ctx.shadowBlur = 5 + chargeProgress * 10;
+                    ctx.fillRect(this.x - this.width / 2, this.y, this.width, currentBeamHeight); // Draw from UFO down
+                } else if (status === 'active') {
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Green beam
+                    ctx.shadowColor = 'rgba(0, 255, 0, 1)';
+                    ctx.shadowBlur = 15;
+                    ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
+                }
                 ctx.shadowBlur = 0;
                 ctx.restore();
             }
         }
         let ufoBeamsActive = []; // Array to hold active UFO beams
+
+        // NEW Perk Class
+        class Perk {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.radius = 15;
+                this.speed = 1; // Perks move slower than enemies
+                this.type = type; // 'heart', 'speedBoost', 'fireRateBoost'
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                if (this.type === 'heart') {
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.arc(-this.radius * 0.4, -this.radius * 0.4, this.radius * 0.5, 0, Math.PI * 2);
+                    ctx.arc(this.radius * 0.4, -this.radius * 0.4, this.radius * 0.5, 0, Math.PI * 2);
+                    ctx.lineTo(0, this.radius);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = 'white'; // Small highlight
+                    ctx.beginPath();
+                    ctx.arc(-this.radius * 0.2, -this.radius * 0.6, this.radius * 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.type === 'speedBoost') {
+                    ctx.fillStyle = 'cyan';
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.radius);
+                    ctx.lineTo(this.radius, this.radius);
+                    ctx.lineTo(-this.radius, this.radius);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('SPD', 0, 0);
+                } else if (this.type === 'fireRateBoost') {
+                    ctx.fillStyle = 'yellow';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'black';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('FR', 0, 0);
+                }
+                ctx.restore();
+            }
+        }
 
 
         // Base Enemy Class
@@ -818,7 +922,7 @@
                 this.type = type; // e.g., 'basic', 'advanced', 'ufo'
                 this.health = 1;
                 this.oscillationOffset = Math.random() * Math.PI * 2; // For frantic movement
-                this.trackingSpeed = 0.05; // How fast enemies track the player
+                // this.trackingSpeed = 0.05; // How fast enemies track the player - REMOVED FOR REGULAR ENEMIES
 
                 // UFO specific
                 this.lastUfoBeamTime = 0;
@@ -836,28 +940,22 @@
             update(timestamp) {
                 this.y += this.speed;
 
-                // Attract feature: move towards player's X
-                if (player) {
-                    const directionX = player.x - this.x;
-                    this.x += directionX * this.trackingSpeed; // Subtle tracking
-                }
-
-
                 if (this.type === 'advanced') {
-                    // Frantic movement: oscillate left and right
-                    this.x += Math.sin(performance.now() * 0.01 + this.oscillationOffset) * 2; // Adjust multiplier for intensity
+                    // Frantic movement: oscillate left and right - MADE MORE FRANTIC
+                    this.x += Math.sin(timestamp * 0.02 + this.oscillationOffset) * 4;
                     // Keep advanced enemy within horizontal bounds
                     if (this.x < this.width / 2) this.x = this.width / 2;
                     if (this.x > canvas.width - this.width / 2) this.x = canvas.width - this.width / 2;
                 } else if (this.type === 'ufo') {
                     // Slower scroll-down, but still with some subtle horizontal drift
-                    this.x += Math.sin(performance.now() * 0.005 + this.oscillationOffset) * 0.5; // Slower, less intense drift
+                    this.x += Math.sin(timestamp * 0.005 + this.oscillationOffset) * 0.5;
                     if (this.x < this.width / 2) this.x = this.width / 2;
                     if (this.x > canvas.width - this.width / 2) this.x = canvas.width - this.width / 2;
 
                     // UFO Abduction Beam attack
-                    if (timestamp - this.lastUfoBeamTime > this.ufoBeamCooldown && this.y > 0 && this.y < canvas.height * 0.6) { // Only fire if on screen and not too low
-                        ufoBeamsActive.push(new UfoBeam(this.x, this.y, this.width));
+                    // Only fire if on screen and not too low, and cooldown is ready
+                    if (timestamp - this.lastUfoBeamTime > this.ufoBeamCooldown && this.y > 0 && this.y < canvas.height * 0.6) {
+                        ufoBeamsActive.push(new UfoBeam(this.x, this.y, this.width, timestamp)); // Pass current timestamp
                         this.lastUfoBeamTime = timestamp;
                     }
                 }
@@ -923,48 +1021,56 @@
                 this.initialHealth = 10;
                 this.fireRate = 1000; // Milliseconds between shots
 
-                // Define specific properties for each boss type
+                // Define specific properties for each boss type and bullet color
                 switch (type) {
                     case 'level_1_boss':
                         this.initialHealth = 10;
                         this.fireRate = 1000;
                         this.speed = 1.5;
+                        this.bulletColor = '#FF0000'; // Red
                         break;
                     case 'level_2_boss':
                         this.initialHealth = 15;
                         this.fireRate = 800;
                         this.speed = 1.8;
+                        this.bulletColor = '#00FFFF'; // Cyan
                         break;
                     case 'level_3_boss':
                         this.initialHealth = 20;
                         this.fireRate = 700;
                         this.speed = 2.0;
+                        this.bulletColor = '#FFFF00'; // Yellow
                         break;
                     case 'level_4_boss':
                         this.initialHealth = 25;
                         this.fireRate = 600;
                         this.speed = 2.2;
+                        this.bulletColor = '#FF00FF'; // Magenta
                         break;
                     case 'level_5_boss':
                         this.initialHealth = 30;
                         this.fireRate = 550;
                         this.speed = 2.5;
+                        this.bulletColor = '#00FF00'; // Green
                         break;
                     case 'level_6_boss':
                         this.initialHealth = 35;
                         this.fireRate = 500;
                         this.speed = 2.7;
+                        this.bulletColor = '#FFA500'; // Orange
                         break;
                     case 'level_7_boss':
                         this.initialHealth = 40;
                         this.fireRate = 450;
                         this.speed = 3.0;
+                        this.bulletColor = '#FFFFFF'; // White
                         break;
                     default:
                         // Fallback for undefined bosses
                         this.initialHealth = 5;
                         this.fireRate = 1500;
                         this.speed = 1.0;
+                        this.bulletColor = '#FF0000'; // Default to red
                         break;
                 }
 
@@ -981,8 +1087,62 @@
 
                 // Firing logic (Boss targets player)
                 if (timestamp - this.lastFireTime > this.fireRate) {
-                    // Fire bullet directly at player's current position
-                    enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x, player.y));
+                    switch (this.type) {
+                        case 'level_1_boss':
+                            enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x, player.y, this.bulletColor));
+                            break;
+                        case 'level_2_boss':
+                            // Two bullets, slightly offset
+                            enemyBullets.push(new EnemyBullet(this.x - 15, this.y + this.height / 2, player.x, player.y, this.bulletColor));
+                            enemyBullets.push(new EnemyBullet(this.x + 15, this.y + this.height / 2, player.x, player.y, this.bulletColor));
+                            break;
+                        case 'level_3_boss':
+                            // Three Y-shape bullets
+                            const angleOffset = Math.PI / 12; // 15 degrees in radians
+                            enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x, player.y, this.bulletColor)); // Straight
+                            // Aim slightly to the left/right of the player's current position, but ensure they move downwards
+                            enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x - 100, player.y + 200, this.bulletColor)); // Left-angled
+                            enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x + 100, player.y + 200, this.bulletColor)); // Right-angled
+                            break;
+                        case 'level_4_boss':
+                            // Rapid burst of 3 single bullets
+                            const burstDelay = 100; // ms between burst shots
+                            for (let i = 0; i < 3; i++) {
+                                setTimeout(() => {
+                                    enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x, player.y, this.bulletColor));
+                                }, i * burstDelay);
+                            }
+                            break;
+                        case 'level_5_boss':
+                            // Wider spread shot (5 bullets)
+                            const spreadAngle5 = Math.PI / 8; // Total spread angle
+                            const numBullets5 = 5;
+                            for (let i = 0; i < numBullets5; i++) {
+                                const angle = Math.atan2(player.y - (this.y + this.height / 2), player.x - this.x) - (spreadAngle5 / 2) + (i * spreadAngle5 / (numBullets5 - 1));
+                                enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, this.x + Math.cos(angle) * 1000, this.y + this.height / 2 + Math.sin(angle) * 1000, this.bulletColor));
+                            }
+                            break;
+                        case 'level_6_boss':
+                            // Cone of 7 bullets, slightly faster
+                            const spreadAngle6 = Math.PI / 6; // Total spread angle
+                            const numBullets6 = 7;
+                            for (let i = 0; i < numBullets6; i++) {
+                                const angle = Math.atan2(player.y - (this.y + this.height / 2), player.x - this.x) - (spreadAngle6 / 2) + (i * spreadAngle6 / (numBullets6 - 1));
+                                // Make bullets slightly faster by adjusting target distance
+                                enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, this.x + Math.cos(angle) * 1500, this.y + this.height / 2 + Math.sin(angle) * 1500, this.bulletColor));
+                            }
+                            break;
+                        case 'level_7_boss':
+                            // Very wide, dense spread of 10-12 bullets, very fast
+                            const spreadAngle7 = Math.PI / 3; // Wider spread angle
+                            const numBullets7 = 12;
+                            for (let i = 0; i < numBullets7; i++) {
+                                const angle = Math.atan2(player.y - (this.y + this.height / 2), player.x - this.x) - (spreadAngle7 / 2) + (i * spreadAngle7 / (numBullets7 - 1));
+                                // Make bullets much faster
+                                enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, this.x + Math.cos(angle) * 2000, this.y + this.height / 2 + Math.sin(angle) * 2000, this.bulletColor));
+                            }
+                            break;
+                    }
                     this.lastFireTime = timestamp;
                 }
             }
@@ -1128,43 +1288,71 @@
 
         // Event Listeners for player movement and shooting
         window.addEventListener("keydown", (e) => {
-            if (gameStarted) {
+            // Only allow player controls if game state is 'playing'
+            if (gameState === 'playing') {
                 keys[e.key] = true;
-                const now = performance.now();
+                const now = Tone.now(); // Use Tone.now() for audio scheduling consistency
+                const performanceNow = performance.now(); // Use performance.now for game logic timing
 
                 // Regular shooting
                 if (e.key === " ") {
                     // Check if enough time has passed since the last shot based on fire rate
-                    if (now - lastShotTime > (baseFireDelay / playerFireRateLevel)) {
+                    // Apply temporary fire rate boost
+                    const currentFireDelay = baseFireDelay / (playerFireRateLevel * playerTempFireRateMultiplier);
+                    if (performanceNow - lastShotTime > currentFireDelay) {
                         // Play the specific laser sound for the current ship type
                         const currentLaserSound = laserSounds[playerShipType];
                         if (currentLaserSound && currentLaserSound.loaded) {
                             // Stop and restart if already playing to allow rapid fire sound
-                            if (currentLaserSound.state === 'started') { // Only stop if playing
+                            if (currentLaserSound.state === 'started') {
                                 currentLaserSound.stop();
                             }
-                            currentLaserSound.start(Tone.now()); // Start from now
+                            currentLaserSound.start(Tone.now() + 0.001); // Add a small offset
                         } else {
                             // Fallback to a generic synth sound if specific sound not loaded
-                            shootSynth.triggerAttackRelease("C4", "8n");
+                            shootSynth.triggerAttack("C4", Tone.now() + 0.001); // Add a small offset
+                            shootSynth.triggerRelease(Tone.now() + 0.05 + 0.001); // Release after 50ms + offset
                         }
-                        bullets.push(new Bullet(player.x, player.y - player.height / 2));
-                        lastShotTime = now;
+
+                        // --- Bullet Firing Logic based on Ship Type ---
+                        if (playerShipType === 'model_0') {
+                            // Default single bullet
+                            bullets.push(new Bullet(player.x, player.y - player.height / 2));
+                        } else if (playerShipType === 'model_1') {
+                            // Double bullets, side-by-side
+                            bullets.push(new Bullet(player.x - 15, player.y - player.height / 2));
+                            bullets.push(new Bullet(player.x + 15, player.y - player.height / 2));
+                        } else if (playerShipType === 'model_2') {
+                            // Y-shape bullets (3 bullets)
+                            const angleOffset = Math.PI / 12; // 15 degrees in radians for side bullets
+
+                            // Center bullet (straight up)
+                            bullets.push(new Bullet(player.x, player.y - player.height / 2));
+
+                            // Left angled bullet
+                            bullets.push(new Bullet(player.x, player.y - player.height / 2, -Math.PI / 2 - angleOffset));
+
+                            // Right angled bullet
+                            bullets.push(new Bullet(player.x, player.y - player.height / 2, -Math.PI / 2 + angleOffset));
+                        }
+                        // --- End Bullet Firing Logic ---
+
+                        lastShotTime = performanceNow;
                     }
                 }
 
                 // Spacebeam activation
                 if (e.key.toLowerCase() === "z" && hasSpacebeam && !isSpacebeamFiring && !isSpacebeamCharging) {
-                    if (now - lastSpacebeamTime > spacebeamCooldown) {
+                    if (performanceNow - lastSpacebeamTime > spacebeamCooldown) { // Use performance.now() for game logic timing
                         isSpacebeamCharging = true;
-                        lastSpacebeamTime = now; // Start cooldown and charge time now
+                        lastSpacebeamTime = performanceNow; // Store in ms
 
                         // Play spacebeam charging sound
                         if (spacebeamChargeSound.loaded) {
-                            if (spacebeamChargeSound.state === 'started') { // Only stop if playing
+                            if (spacebeamChargeSound.state === 'started') {
                                 spacebeamChargeSound.stop();
                             }
-                            spacebeamChargeSound.start(Tone.now());
+                            spacebeamChargeSound.start(Tone.now() + 0.001); // Add a small offset
                         }
 
                         // Set a timeout to activate the beam after charging
@@ -1186,9 +1374,9 @@
 
                 // Shield activation
                 if (e.key.toLowerCase() === "x" && hasShield && !isPlayerInvincible) {
-                    if (now - lastShieldTime > shieldCooldown) {
+                    if (performanceNow - lastShieldTime > shieldCooldown) { // Use performance.now() for game logic timing
                         isPlayerInvincible = true;
-                        lastShieldTime = now;
+                        lastShieldTime = performanceNow; // Store in ms
                         // Set a timeout to deactivate shield
                         setTimeout(() => {
                             isPlayerInvincible = false;
@@ -1203,7 +1391,7 @@
         });
 
         window.addEventListener("keyup", (e) => {
-            if (gameStarted) {
+            if (gameState === 'playing') { // Only process keyup if game state is 'playing'
                 keys[e.key] = false;
             }
         });
@@ -1218,12 +1406,12 @@
             // Clear and redraw everything
             if (gameStarted) {
                 cancelAnimationFrame(animationFrameId);
-                gameLoop(0); // Restart loop with current timestamp
+                gameLoop(performance.now()); // Restart loop with current timestamp
             }
         });
 
         function spawnEnemy(timestamp) {
-            if (!gameStarted || enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel) return;
+            if (gameState !== 'playing' || enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel) return; // Only spawn if playing
             if (currentBoss) return; // Don't spawn regular enemies if boss is active
 
             // Only spawn if enough time has passed since last spawn
@@ -1290,6 +1478,15 @@
             if (enemySpeedMultiplier < 1) { // Assuming 1 is base multiplier
                 perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Enemy Slow</div>`;
             }
+            // Temporary perk indicators
+            if (playerTempSpeedMultiplier > 1) {
+                const remainingTime = Math.max(0, speedBoostEndTime - timestamp);
+                perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Speed Boost (${Math.ceil(remainingTime / 1000)}s)</div>`;
+            }
+            if (playerTempFireRateMultiplier > 1) {
+                const remainingTime = Math.max(0, fireRateBoostEndTime - timestamp);
+                perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Fire Rate Boost (${Math.ceil(remainingTime / 1000)}s)</div>`;
+            }
         }
 
 
@@ -1316,6 +1513,7 @@
             enemies.length = 0;
             enemyBullets.length = 0; // Clear enemy bullets
             ufoBeamsActive.length = 0; // Clear UFO beams
+            perks.length = 0; // Clear perks
             currentBoss = null; // Clear any active boss
             bossHealthBar.style.display = 'none'; // Hide boss health bar
 
@@ -1324,23 +1522,27 @@
             playerBulletRadius = 4;
             enemySpeedMultiplier = 1;
             hasSpacebeam = false;
-            isSpacebeamCharging = false; // Reset charging state
+            isSpacebeamCharging = false;
             isSpacebeamFiring = false;
             lastSpacebeamTime = 0;
             hasShield = false;
             isPlayerInvincible = false;
             lastShieldTime = 0;
+            playerTempSpeedMultiplier = 1; // Reset temporary speed boost
+            playerTempFireRateMultiplier = 1; // Reset temporary fire rate boost
+            speedBoostEndTime = 0;
+            fireRateBoostEndTime = 0;
             perkIndicatorsContainer.innerHTML = ''; // Clear perk indicators
 
             player.x = canvas.width / 2;
-            player.y = canvas.height - player.height - 30;
+            player.y = canvas.height - player.height - 30; // Reset player position
 
             // Reset shop items purchased status
             shopItems.forEach(item => item.purchased = false);
 
             updateScoreboard();
             hideAllScreens();
-            gameStarted = true;
+            gameState = 'playing'; // Set game state to playing
             animationFrameId = requestAnimationFrame(gameLoop);
             if (backgroundMusic.state === 'started') { // Only stop if playing
                 backgroundMusic.stop();
@@ -1354,15 +1556,24 @@
             shopScreen.style.display = "none";
         }
 
-        function showLevelCompleteScreen() {
-            gameStarted = false;
-            cancelAnimationFrame(animationFrameId);
-            currentLevelDisplay.innerText = currentLevel;
-            levelCompleteScreen.style.display = "flex";
-            if (backgroundMusic.state === 'started') { // Only stop if playing
+        function showLevelCompleteScreen(timestamp) {
+            gameStarted = false; // Stop general game logic
+            cancelAnimationFrame(animationFrameId); // Stop the current game loop
+            animationStartTime = timestamp; // Record start time for animation
+            gameState = 'levelCompleteAnimation'; // Set new game state for animation
+            
+            // Clear remaining enemies and bullets for a clean animation
+            enemies.length = 0;
+            enemyBullets.length = 0;
+            ufoBeamsActive.length = 0;
+            perks.length = 0; // Clear perks
+            currentBoss = null; // Boss is defeated
+            bossHealthBar.style.display = 'none'; // Ensure boss health bar is hidden
+
+            if (backgroundMusic.state === 'started') {
                 backgroundMusic.stop();
             }
-            bossHealthBar.style.display = 'none'; // Ensure boss health bar is hidden
+            animationFrameId = requestAnimationFrame(gameLoop); // Start new loop for animation
         }
 
         function showShopScreen() {
@@ -1373,6 +1584,7 @@
             if (backgroundMusic.state === 'started') { // Only stop if playing
                 backgroundMusic.stop();
             }
+            gameState = 'shop'; // Set game state to shop
         }
 
         function renderShopItems() {
@@ -1514,17 +1726,27 @@
             enemies.length = 0; // Clear regular enemies
             enemyBullets.length = 0; // Clear enemy bullets
             ufoBeamsActive.length = 0; // Clear UFO beams
+            perks.length = 0; // Clear perks
             currentBoss = null; // Ensure no boss from previous level lingers
             bossHealthBar.style.display = 'none'; // Hide boss health bar
 
+            // Reset temporary perks
+            playerTempSpeedMultiplier = 1;
+            playerTempFireRateMultiplier = 1;
+            speedBoostEndTime = 0;
+            fireRateBoostEndTime = 0;
+
+            player.x = canvas.width / 2;
+            player.y = canvas.height - player.height - 30; // Reset player position
+
             hideAllScreens();
-            gameStarted = true;
+            gameState = 'playing'; // Set game state to playing
             animationFrameId = requestAnimationFrame(gameLoop);
             backgroundMusic.start(); // Start music when level begins
         }
 
         function endGame() {
-            gameStarted = false;
+            gameStarted = false; // No longer needed, gameState handles this
             cancelAnimationFrame(animationFrameId); // Stop the game loop
             if (score > highScore) {
                 highScore = score;
@@ -1537,309 +1759,432 @@
                 backgroundMusic.stop();
             }
             bossHealthBar.style.display = 'none'; // Ensure boss health bar is hidden
+            gameState = 'gameOver'; // Set game state to game over
         }
 
         function gameLoop(timestamp) {
-            if (!gameStarted) return;
+            // Main game loop logic based on gameState
+            if (gameState === 'start') {
+                // Draw start screen (handled by CSS display)
+                animationFrameId = requestAnimationFrame(gameLoop); // Keep looping for starfield
+                return;
+            } else if (gameState === 'gameOver') {
+                // Draw game over screen (handled by CSS display)
+                animationFrameId = requestAnimationFrame(gameLoop); // Keep looping for starfield
+                return;
+            } else if (gameState === 'shop') {
+                // Draw shop screen (handled by CSS display)
+                animationFrameId = requestAnimationFrame(gameLoop); // Keep looping for starfield
+                return;
+            } else if (gameState === 'levelCompleteScreenDisplayed') {
+                // Draw level complete screen (handled by CSS display)
+                animationFrameId = requestAnimationFrame(gameLoop); // Keep looping for starfield
+                return;
+            }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
 
-            // Update and draw stars
+            // Update and draw stars regardless of game state
             stars.forEach(star => {
                 star.update();
                 star.draw();
             });
 
-            // Player movement
-            let dirX = 0;
-            let dirY = 0;
-            if (keys["ArrowLeft"]) dirX = -1;
-            if (keys["ArrowRight"]) dirX = 1;
-            if (keys["ArrowUp"]) dirY = -1;
-            if (keys["ArrowDown"]) dirY = 1;
-            player.move(dirX, dirY); // Pass both directions
-            player.update();
-            player.draw();
+            if (gameState === 'playing') {
+                // Update temporary perk durations
+                if (playerTempSpeedMultiplier > 1 && timestamp > speedBoostEndTime) {
+                    playerTempSpeedMultiplier = 1;
+                    console.log("Speed Boost expired.");
+                }
+                if (playerTempFireRateMultiplier > 1 && timestamp > fireRateBoostEndTime) {
+                    playerTempFireRateMultiplier = 1;
+                    console.log("Fire Rate Boost expired.");
+                }
 
-            // --- Spacebeam drawing and collision ---
-            if (isSpacebeamCharging) {
-                ctx.save();
-                // Draw charging animation: growing line from player
-                const chargeProgress = (timestamp - lastSpacebeamTime) / spacebeamChargeTime;
-                const beamHeight = player.y * chargeProgress;
-                const beamY = player.y - beamHeight;
+                // Player movement
+                let dirX = 0;
+                let dirY = 0;
+                if (keys["ArrowLeft"]) dirX = -1;
+                if (keys["ArrowRight"]) dirX = 1;
+                if (keys["ArrowUp"]) dirY = -1;
+                if (keys["ArrowDown"]) dirY = 1;
+                player.move(dirX, dirY); // Pass both directions
+                player.update();
+                player.draw();
 
-                ctx.fillStyle = `rgba(0, 255, 255, ${0.3 + chargeProgress * 0.5})`; // Increase opacity
-                ctx.shadowColor = 'rgba(0, 255, 255, 1)';
-                ctx.shadowBlur = 10 + chargeProgress * 20; // Increase blur
-                ctx.fillRect(player.x - 10, beamY, 20, beamHeight); // Narrower, growing beam
-                ctx.shadowBlur = 0;
-                ctx.restore();
-            } else if (isSpacebeamFiring) {
-                ctx.save();
-                ctx.fillStyle = 'rgba(0, 255, 255, 0.7)'; // Cyan beam
-                ctx.shadowColor = 'rgba(0, 255, 255, 1)';
-                ctx.shadowBlur = 30;
-                // Draw beam from player to top of screen
-                ctx.fillRect(player.x - 20, 0, 40, player.y); // Width 40, extends from top to player's Y
-                ctx.shadowBlur = 0; // Reset shadow
-                ctx.restore();
+                // --- Spacebeam drawing and collision ---
+                if (isSpacebeamCharging) {
+                    ctx.save();
+                    // Draw charging animation: growing line from player
+                    const chargeProgress = (timestamp - lastSpacebeamTime) / spacebeamChargeTime;
+                    const beamHeight = player.y * chargeProgress;
+                    const beamY = player.y - beamHeight;
 
-                // Spacebeam collision with enemies
+                    ctx.fillStyle = `rgba(0, 255, 255, ${0.3 + chargeProgress * 0.5})`; // Increase opacity
+                    ctx.shadowColor = 'rgba(0, 255, 255, 1)';
+                    ctx.shadowBlur = 10 + chargeProgress * 20; // Increase blur
+                    ctx.fillRect(player.x - 10, beamY, 20, beamHeight); // Narrower, growing beam
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                } else if (isSpacebeamFiring) {
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.7)'; // Cyan beam
+                    ctx.shadowColor = 'rgba(0, 255, 255, 1)';
+                    ctx.shadowBlur = 30;
+                    // Draw beam from player to top of screen
+                    ctx.fillRect(player.x - 20, 0, 40, player.y); // Width 40, extends from top to player's Y
+                    ctx.shadowBlur = 0; // Reset shadow
+                    ctx.restore();
+
+                    // Spacebeam collision with enemies
+                    for (let i = enemies.length - 1; i >= 0; i--) {
+                        const enemy = enemies[i];
+                        // Check if enemy is within the beam's X range and above player
+                        if (enemy.x + enemy.width / 2 > player.x - 20 &&
+                            enemy.x - enemy.width / 2 < player.x + 20 &&
+                            enemy.y + enemy.height / 2 > 0 && // Ensure enemy is on screen
+                            enemy.y - enemy.height / 2 < player.y) {
+
+                            enemy.health -= SPACEBEAM_DAMAGE; // Apply damage
+                            if (enemy.health <= 0) {
+                                enemies.splice(i, 1);
+                                score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10);
+                                enemiesRemainingThisLevel--;
+                                // Perk drop chance on enemy defeat
+                                if (Math.random() < PERK_DROP_CHANCE) {
+                                    const randomPerkType = PERK_TYPES[Math.floor(Math.random() * PERK_TYPES.length)];
+                                    perks.push(new Perk(enemy.x, enemy.y, randomPerkType));
+                                }
+                            }
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.05", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
+                            updateScoreboard();
+                            // No break here, as beam can hit multiple enemies
+                        }
+                    }
+
+                    // Spacebeam collision with boss
+                    if (currentBoss) {
+                        if (currentBoss.x + currentBoss.width / 2 > player.x - 20 &&
+                            currentBoss.x - currentBoss.width / 2 < player.x + 20 &&
+                            currentBoss.y + currentBoss.height / 2 > 0 &&
+                            currentBoss.y - currentBoss.height / 2 < player.y) {
+
+                            currentBoss.health -= SPACEBEAM_DAMAGE;
+                            if (currentBoss.health <= 0) {
+                                score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50;
+                                updateScoreboard();
+                                showLevelCompleteScreen(timestamp); // Trigger animation
+                                return; // Exit gameLoop to start animation
+                            }
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.05", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
+                            currentBoss.updateHealthBar();
+                        }
+                    }
+                }
+                // --- End Spacebeam ---
+
+
+                // Update and draw player bullets
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const bullet = bullets[i];
+                    bullet.update();
+                    bullet.draw();
+                    if (bullet.y < 0) {
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                // Update and draw enemy bullets
+                for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                    const eBullet = enemyBullets[i];
+                    eBullet.update();
+                    eBullet.draw();
+
+                    // Check for enemy bullet collision with player
+                    if (!isPlayerInvincible) { // Only take damage if not invincible
+                        if (
+                            eBullet.x + eBullet.radius > player.x - player.width / 2 &&
+                            eBullet.x - eBullet.radius < player.x + player.width / 2 &&
+                            eBullet.y + eBullet.radius > player.y - player.height / 2 &&
+                            eBullet.y - eBullet.radius < player.y + player.height / 2
+                        ) {
+                            enemyBullets.splice(i, 1); // Remove bullet
+                            lives -= eBullet.damage; // Player takes damage
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.2", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
+                            updateScoreboard();
+                            if (lives <= 0) {
+                                endGame();
+                                return;
+                            }
+                        }
+                    }
+
+                    if (eBullet.y > canvas.height) {
+                        enemyBullets.splice(i, 1);
+                    }
+                }
+
+                // Update and draw UFO beams
+                for (let i = ufoBeamsActive.length - 1; i >= 0; i--) {
+                    const ufoBeam = ufoBeamsActive[i];
+                    const beamStatus = ufoBeam.update(timestamp); // Get current status
+                    
+                    if (beamStatus === 'inactive') {
+                        ufoBeamsActive.splice(i, 1); // Remove inactive beams
+                        continue;
+                    }
+                    ufoBeam.draw(timestamp); // Pass timestamp to draw for charging animation
+
+                    // Only check collision if beam is active (after charge time)
+                    if (beamStatus === 'active' && !isPlayerInvincible) {
+                        if (
+                            player.x + player.width / 2 > ufoBeam.x - ufoBeam.width / 2 &&
+                            player.x - ufoBeam.width / 2 < ufoBeam.x + ufoBeam.width / 2 &&
+                            player.y + player.height / 2 > ufoBeam.y &&
+                            player.y - ufoBeam.height / 2 < ufoBeam.y + ufoBeam.height
+                        ) {
+                            lives -= ufoBeam.damage; // Player takes damage
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.2", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
+                            updateScoreboard();
+                            // ufoBeamsActive.splice(i, 1); // Do not remove beam after hit, it persists for its duration
+                            if (lives <= 0) {
+                                endGame();
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // Update and draw Perks, handle collisions
+                for (let i = perks.length - 1; i >= 0; i--) {
+                    const perk = perks[i];
+                    perk.update();
+                    perk.draw();
+
+                    // Check for player-perk collision
+                    if (
+                        player.x + player.width / 2 > perk.x - perk.radius &&
+                        player.x - player.width / 2 < perk.x + perk.radius &&
+                        player.y + player.height / 2 > perk.y - perk.radius &&
+                        player.y - player.height / 2 < perk.y + perk.radius
+                    ) {
+                        // Apply perk effect
+                        if (collectPerkSound.loaded) {
+                            collectPerkSound.start(Tone.now() + 0.001);
+                        }
+                        if (perk.type === 'heart') {
+                            lives = Math.min(lives + 1, maxLives);
+                            updateScoreboard();
+                        } else if (perk.type === 'speedBoost') {
+                            playerTempSpeedMultiplier = 1.5; // 50% speed increase
+                            speedBoostEndTime = timestamp + PERK_DURATION;
+                            console.log("Speed Boost collected!");
+                        } else if (perk.type === 'fireRateBoost') {
+                            playerTempFireRateMultiplier = 1.5; // 50% fire rate increase
+                            fireRateBoostEndTime = timestamp + PERK_DURATION;
+                            console.log("Fire Rate Boost collected!");
+                        }
+                        perks.splice(i, 1); // Remove collected perk
+                    } else if (perk.y > canvas.height + perk.radius) {
+                        perks.splice(i, 1); // Remove perk if off-screen
+                    }
+                }
+
+
+                // Spawn enemies or boss
+                if (!currentBoss) { // Only spawn regular enemies if no boss is active
+                    spawnEnemy(timestamp);
+
+                    // Check if all regular enemies for the level are spawned and defeated
+                    if (enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel && enemies.length === 0) {
+                        // Time to spawn a boss!
+                        let bossType = null;
+                        if (currentLevel === 1) bossType = 'level_1_boss';
+                        else if (currentLevel === 2) bossType = 'level_2_boss';
+                        else if (currentLevel === 3) bossType = 'level_3_boss';
+                        else if (currentLevel === 4) bossType = 'level_4_boss';
+                        else if (currentLevel === 5) bossType = 'level_5_boss';
+                        else if (currentLevel === 6) bossType = 'level_6_boss';
+                        else if (currentLevel === 7) bossType = 'level_7_boss';
+                        // Add more levels here if needed
+
+                        if (bossType) {
+                            currentBoss = new Boss(bossType);
+                        } else {
+                            // For levels beyond defined bosses, proceed to level complete screen
+                            showLevelCompleteScreen(timestamp); // Trigger animation
+                            return;
+                        }
+                    }
+                }
+
+
+                // Update and draw enemies, handle collisions
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const enemy = enemies[i];
-                    // Check if enemy is within the beam's X range and above player
-                    if (enemy.x + enemy.width / 2 > player.x - 20 &&
-                        enemy.x - enemy.width / 2 < player.x + 20 &&
-                        enemy.y + enemy.height / 2 > 0 && // Ensure enemy is on screen
-                        enemy.y - enemy.height / 2 < player.y) {
+                    enemy.update(timestamp); // Pass timestamp for UFO beam
+                    enemy.draw();
 
-                        enemy.health -= SPACEBEAM_DAMAGE; // Apply damage
-                        if (enemy.health <= 0) {
+                    // Check for player bullet-enemy collision
+                    for (let j = bullets.length - 1; j >= 0; j--) {
+                        const bullet = bullets[j];
+                        // Simple rectangular collision detection
+                        if (
+                            bullet.x + bullet.radius > enemy.x - enemy.width / 2 &&
+                            bullet.x - bullet.radius < enemy.x + enemy.width / 2 &&
+                            bullet.y + bullet.radius > enemy.y - enemy.height / 2 &&
+                            bullet.y - bullet.radius < enemy.y + enemy.height / 2
+                        ) {
+                            enemy.health -= bullet.damage; // Reduce enemy health
+                            bullets.splice(j, 1); // Remove player bullet
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.05", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
+
+                            if (enemy.health <= 0) {
+                                enemies.splice(i, 1); // Remove enemy if health <= 0
+                                score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10); // Points for different types
+                                enemiesRemainingThisLevel--; // Decrement remaining enemies
+                                // Perk drop chance on enemy defeat
+                                if (Math.random() < PERK_DROP_CHANCE) {
+                                    const randomPerkType = PERK_TYPES[Math.floor(Math.random() * PERK_TYPES.length)];
+                                    perks.push(new Perk(enemy.x, enemy.y, randomPerkType));
+                                }
+                            }
+                            updateScoreboard();
+                            break; // Only one bullet can hit an enemy
+                        }
+                    }
+
+                    // Check for enemy-player collision
+                    if (!isPlayerInvincible) { // Only take damage if not invincible
+                        if (
+                            enemy.y + enemy.height / 2 > player.y - player.height / 2 &&
+                            enemy.y - enemy.height / 2 < player.y + player.height / 2 &&
+                            enemy.x + enemy.width / 2 > player.x - player.width / 2 &&
+                            enemy.x - player.width / 2 < player.x + player.width / 2
+                        ) {
                             enemies.splice(i, 1);
-                            score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10);
-                            enemiesRemainingThisLevel--;
-                        }
-                        hitSynth.triggerAttackRelease("0.05"); // Hit sound for beam
-                        updateScoreboard();
-                    }
-                }
-
-                // Spacebeam collision with boss
-                if (currentBoss) {
-                    if (currentBoss.x + currentBoss.width / 2 > player.x - 20 &&
-                        currentBoss.x - currentBoss.width / 2 < player.x + 20 &&
-                        currentBoss.y + currentBoss.height / 2 > 0 &&
-                        currentBoss.y - currentBoss.height / 2 < player.y) {
-
-                        currentBoss.health -= SPACEBEAM_DAMAGE;
-                        if (currentBoss.health <= 0) {
-                            score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50;
+                            lives -= 1;
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.2", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
                             updateScoreboard();
-                            currentBoss.hideHealthBar();
-                            currentBoss = null;
-                            showLevelCompleteScreen();
-                            return;
-                        }
-                        hitSynth.triggerAttackRelease("0.05"); // Hit sound for beam
-                        currentBoss.updateHealthBar();
-                    }
-                }
-            }
-            // --- End Spacebeam ---
-
-
-            // Update and draw player bullets
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const bullet = bullets[i];
-                bullet.update();
-                bullet.draw();
-                if (bullet.y < 0) {
-                    bullets.splice(i, 1);
-                }
-            }
-
-            // Update and draw enemy bullets
-            for (let i = enemyBullets.length - 1; i >= 0; i--) {
-                const eBullet = enemyBullets[i];
-                eBullet.update();
-                eBullet.draw();
-
-                // Check for enemy bullet collision with player
-                if (!isPlayerInvincible) { // Only take damage if not invincible
-                    if (
-                        eBullet.x + eBullet.radius > player.x - player.width / 2 &&
-                        eBullet.x - eBullet.radius < player.x + player.width / 2 &&
-                        eBullet.y + eBullet.radius > player.y - player.height / 2 &&
-                        eBullet.y - eBullet.radius < player.y + player.height / 2
-                    ) {
-                        enemyBullets.splice(i, 1); // Remove bullet
-                        lives -= eBullet.damage; // Player takes damage
-                        hitSynth.triggerAttackRelease("0.2"); // Player hit sound
-                        updateScoreboard();
-                        if (lives <= 0) {
-                            endGame();
-                            return;
+                            if (lives <= 0) {
+                                endGame();
+                                return;
+                            }
                         }
                     }
-                }
 
-                if (eBullet.y > canvas.height) {
-                    enemyBullets.splice(i, 1);
-                }
-            }
-
-            // Update and draw UFO beams
-            for (let i = ufoBeamsActive.length - 1; i >= 0; i--) {
-                const ufoBeam = ufoBeamsActive[i];
-                if (!ufoBeam.update(timestamp)) {
-                    ufoBeamsActive.splice(i, 1); // Remove inactive beams
-                    continue;
-                }
-                ufoBeam.draw();
-
-                // Check for UFO beam collision with player
-                if (!isPlayerInvincible) { // Only take damage if not invincible
-                    if (
-                        player.x + player.width / 2 > ufoBeam.x - ufoBeam.width / 2 &&
-                        player.x - player.width / 2 < ufoBeam.x + ufoBeam.width / 2 &&
-                        player.y + player.height / 2 > ufoBeam.y &&
-                        player.y - player.height / 2 < ufoBeam.y + ufoBeam.height
-                    ) {
-                        lives -= ufoBeam.damage; // Player takes damage
-                        hitSynth.triggerAttackRelease("0.2");
-                        updateScoreboard();
-                        ufoBeamsActive.splice(i, 1); // Remove beam after hit
-                        if (lives <= 0) {
-                            endGame();
-                            return;
-                        }
-                    }
-                }
-            }
-
-
-            // Spawn enemies or boss
-            if (!currentBoss) { // Only spawn regular enemies if no boss is active
-                spawnEnemy(timestamp);
-
-                // Check if all regular enemies for the level are spawned and defeated
-                if (enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel && enemies.length === 0) {
-                    // Time to spawn a boss!
-                    let bossType = null;
-                    if (currentLevel === 1) bossType = 'level_1_boss';
-                    else if (currentLevel === 2) bossType = 'level_2_boss';
-                    else if (currentLevel === 3) bossType = 'level_3_boss';
-                    else if (currentLevel === 4) bossType = 'level_4_boss';
-                    else if (currentLevel === 5) bossType = 'level_5_boss';
-                    else if (currentLevel === 6) bossType = 'level_6_boss';
-                    else if (currentLevel === 7) bossType = 'level_7_boss';
-                    // Add more levels here if needed
-
-                    if (bossType) {
-                        currentBoss = new Boss(bossType);
-                    } else {
-                        // For levels beyond defined bosses, proceed to level complete screen
-                        showLevelCompleteScreen();
-                        return;
-                    }
-                }
-            }
-
-
-            // Update and draw enemies, handle collisions
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const enemy = enemies[i];
-                enemy.update(timestamp); // Pass timestamp for UFO beam
-                enemy.draw();
-
-                // Check for player bullet-enemy collision
-                for (let j = bullets.length - 1; j >= 0; j--) {
-                    const bullet = bullets[j];
-                    // Simple rectangular collision detection
-                    if (
-                        bullet.x + bullet.radius > enemy.x - enemy.width / 2 &&
-                        bullet.x - bullet.radius < enemy.x + enemy.width / 2 &&
-                        bullet.y + bullet.radius > enemy.y - enemy.height / 2 &&
-                        bullet.y - bullet.radius < enemy.y + enemy.height / 2
-                    ) {
-                        enemy.health -= bullet.damage; // Reduce enemy health
-                        bullets.splice(j, 1); // Remove player bullet
-                        hitSynth.triggerAttackRelease("0.05");
-
-                        if (enemy.health <= 0) {
-                            enemies.splice(i, 1); // Remove enemy if health <= 0
-                            score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10); // Points for different types
-                            enemiesRemainingThisLevel--; // Decrement remaining enemies
-                        }
-                        updateScoreboard();
-                        break; // Only one bullet can hit an enemy
-                    }
-                }
-
-                // Check for enemy-player collision
-                if (!isPlayerInvincible) { // Only take damage if not invincible
-                    if (
-                        enemy.y + enemy.height / 2 > player.y - player.height / 2 &&
-                        enemy.y - enemy.height / 2 < player.y + player.height / 2 &&
-                        enemy.x + enemy.width / 2 > player.x - player.width / 2 &&
-                        enemy.x - player.width / 2 < player.x + player.width / 2
-                    ) {
+                    // Remove enemies that go off screen
+                    if (enemy.y > canvas.height) {
                         enemies.splice(i, 1);
-                        lives -= 1;
-                        hitSynth.triggerAttackRelease("0.2");
-                        updateScoreboard();
-                        if (lives <= 0) {
-                            endGame();
-                            return;
-                        }
+                        enemiesRemainingThisLevel--; // Decrement remaining enemies
                     }
                 }
 
-                // Remove enemies that go off screen
-                if (enemy.y > canvas.height) {
-                    enemies.splice(i, 1);
-                    enemiesRemainingThisLevel--; // Decrement remaining enemies
-                }
-            }
+                // Boss update and draw logic
+                if (currentBoss) {
+                    currentBoss.update(timestamp);
+                    currentBoss.draw();
+                    currentBoss.updateHealthBar(); // Update boss health bar UI
 
-            // Boss update and draw logic
-            if (currentBoss) {
-                currentBoss.update(timestamp);
-                currentBoss.draw();
-                currentBoss.updateHealthBar(); // Update boss health bar UI
+                    // Check for player bullet-boss collision
+                    for (let j = bullets.length - 1; j >= 0; j--) {
+                        const bullet = bullets[j];
+                        // Simple rectangular collision for boss
+                        if (
+                            bullet.x + bullet.radius > currentBoss.x - currentBoss.width / 2 &&
+                            bullet.x - currentBoss.width / 2 < currentBoss.x + currentBoss.width / 2 &&
+                            bullet.y + bullet.radius > currentBoss.y - currentBoss.height / 2 &&
+                            bullet.y - currentBoss.height / 2 < currentBoss.y + currentBoss.height / 2
+                        ) {
+                            currentBoss.health -= bullet.damage;
+                            bullets.splice(j, 1); // Remove player bullet
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.05", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
 
-                // Check for player bullet-boss collision
-                for (let j = bullets.length - 1; j >= 0; j--) {
-                    const bullet = bullets[j];
-                    // Simple rectangular collision for boss
-                    if (
-                        bullet.x + bullet.radius > currentBoss.x - currentBoss.width / 2 &&
-                        bullet.x - currentBoss.width / 2 < currentBoss.x + currentBoss.width / 2 &&
-                        bullet.y + bullet.radius > currentBoss.y - currentBoss.height / 2 &&
-                        bullet.y - currentBoss.height / 2 < currentBoss.y + currentBoss.height / 2
-                    ) {
-                        currentBoss.health -= bullet.damage;
-                        bullets.splice(j, 1); // Remove player bullet
-                        hitSynth.triggerAttackRelease("0.05"); // Boss hit sound
+                            if (currentBoss.health <= 0) {
+                                score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50; // Dynamic points for defeating boss
+                                updateScoreboard();
+                                showLevelCompleteScreen(timestamp); // Trigger animation
+                                return;
+                            }
+                            currentBoss.updateHealthBar(); // Update health bar after hit
+                        }
+                    }
 
-                        if (currentBoss.health <= 0) {
-                            score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50; // Dynamic points for defeating boss
+                    // Check for boss-player collision (if boss can collide with player)
+                    if (!isPlayerInvincible) { // Only take damage if not invincible
+                        if (
+                            currentBoss.y + currentBoss.height / 2 > player.y - player.height / 2 &&
+                            currentBoss.y - currentBoss.height / 2 < player.y + player.height / 2 &&
+                            currentBoss.x + currentBoss.width / 2 > player.x - player.width / 2 &&
+                            currentBoss.x - player.width / 2 < player.x + player.width / 2
+                        ) {
+                            // Boss collision with player: remove boss and damage player
+                            currentBoss.health = 0; // Boss is defeated on collision
+                            lives -= 1; // Player takes damage
+                            if (performance.now() - lastHitSoundPlayTime > hitSoundDebounceTime) { // Use performance.now() for debounce
+                                hitSynth.triggerAttackRelease("0.2", Tone.now() + 0.001); // Add offset
+                                lastHitSoundPlayTime = performance.now();
+                            }
                             updateScoreboard();
-                            currentBoss.hideHealthBar();
-                            currentBoss = null; // Boss defeated
-                            showLevelCompleteScreen(); // Level complete after boss defeat
-                            return;
+                            showLevelCompleteScreen(timestamp); // Trigger animation
+                            return; // Exit gameLoop to start animation
                         }
-                        currentBoss.updateHealthBar(); // Update health bar after hit
                     }
                 }
 
-                // Check for boss-player collision (if boss can collide with player)
-                if (!isPlayerInvincible) { // Only take damage if not invincible
-                    if (
-                        currentBoss.y + currentBoss.height / 2 > player.y - player.height / 2 &&
-                        currentBoss.y - currentBoss.height / 2 < player.y + player.height / 2 &&
-                        currentBoss.x + currentBoss.width / 2 > player.x - player.width / 2 &&
-                        currentBoss.x - player.width / 2 < player.x + player.width / 2
-                    ) {
-                        // Boss collision with player: remove boss and damage player
-                        currentBoss.health = 0; // Boss is defeated on collision
-                        lives -= 1; // Player takes damage
-                        hitSynth.triggerAttackRelease("0.2");
-                        updateScoreboard();
-                        currentBoss.hideHealthBar();
-                        currentBoss = null; // Boss defeated
-                        if (lives <= 0) {
-                            endGame();
-                            return;
-                        }
-                    }
+                // Update perk indicators
+                updatePerkIndicators(timestamp);
+
+            } else if (gameState === 'levelCompleteAnimation') {
+                const elapsedTime = timestamp - animationStartTime;
+                const zoomDuration = 2000; // 2 seconds for zoom out
+
+                // Animate player ship zooming upwards
+                player.y -= player.speed * 2;
+                player.draw(); // Draw player during animation
+
+                // Draw "Level Complete!" text fading in/out during animation
+                if (elapsedTime < zoomDuration) {
+                    ctx.save();
+                    ctx.font = "bold 4em 'Inter', sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = `rgba(0, 255, 0, ${Math.min(1, elapsedTime / 1000)})`; // Fade in over 1 second
+                    ctx.shadowColor = 'rgba(0, 255, 0, 1)';
+                    ctx.shadowBlur = 20;
+                    ctx.fillText("LEVEL COMPLETE!", canvas.width / 2, canvas.height / 2);
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                }
+
+                if (player.y + player.height / 2 < 0) { // If player is off-screen
+                    // Transition to actual level complete screen
+                    hideAllScreens();
+                    currentLevelDisplay.innerText = currentLevel;
+                    levelCompleteScreen.style.display = "flex";
+                    gameState = 'levelCompleteScreenDisplayed'; // New state to prevent re-triggering
                 }
             }
-
-            // Update perk indicators
-            updatePerkIndicators(timestamp);
 
             animationFrameId = requestAnimationFrame(gameLoop);
         }
@@ -1853,7 +2198,7 @@
             await Tone.start();
             console.log('Audio context started');
             resetGame();
-            backgroundMusic.start(); // Start music on initial game start
+            // gameState is set to 'playing' in resetGame()
         });
 
         // Level Complete Screen buttons
@@ -1876,7 +2221,7 @@
             await Tone.start();
             console.log('Audio context started on restart');
             resetGame();
-            backgroundMusic.start(); // Start music on restart
+            // gameState is set to 'playing' in resetGame()
         });
 
         // Start the game loop only when the window is loaded and game starts
@@ -1887,6 +2232,8 @@
             // Enable the start button once audio is loaded
             startButton.disabled = false;
             startButton.innerText = "Start Game";
+            // Start the initial game loop for the start screen (starfield)
+            animationFrameId = requestAnimationFrame(gameLoop);
         };
 
         // Initially disable start button until audio is loaded
