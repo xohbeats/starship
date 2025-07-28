@@ -1,236 +1,1897 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Spaceship Shooter</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: black;
-    }
-    canvas {
-      display: block;
-    }
-    #scoreboard {
-      position: absolute;
-      color: white;
-      font-family: sans-serif;
-      top: 10px;
-      left: 10px;
-      font-size: 20px;
-      z-index: 2;
-    }
-    #startScreen {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.9);
-      color: white;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      font-family: sans-serif;
-      font-size: 24px;
-      z-index: 3;
-    }
-    #startButton {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 18px;
-      cursor: pointer;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Galactic Defender</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000; /* Black background for space */
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        canvas {
+            display: block;
+            background-color: #000; /* Ensure canvas background is black */
+            border-radius: 10px; /* Rounded corners for canvas */
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); /* Glowing effect */
+            width: 100%; /* Fluid width */
+            height: 100%; /* Fluid height */
+            max-width: 900px; /* Max width for larger screens */
+            max-height: 700px; /* Max height for larger screens */
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #scoreboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #00ffff; /* Cyan color for scoreboard */
+            text-shadow: 0 0 5px #00ffff;
+            z-index: 2;
+        }
+        #startScreen, #gameOverScreen, #levelCompleteScreen, #shopScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            font-size: 2em;
+            text-align: center;
+            z-index: 3;
+            border-radius: 10px; /* Rounded corners */
+        }
+        #gameOverScreen, #levelCompleteScreen, #shopScreen {
+            display: none; /* Hidden by default */
+        }
+        .game-title {
+            font-size: 3em;
+            margin-bottom: 20px;
+            color: #ff00ff; /* Magenta color for title */
+            text-shadow: 0 0 10px #ff00ff;
+        }
+        .game-message {
+            font-size: 1.5em;
+            margin-bottom: 30px;
+            color: #00ff00; /* Green color for messages */
+        }
+        .game-button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            background: linear-gradient(45deg, #00ffff, #00aaff); /* Gradient button */
+            color: #fff;
+            border: none;
+            border-radius: 8px; /* Rounded corners */
+            box-shadow: 0 5px 15px rgba(0, 255, 255, 0.4);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+            margin: 10px; /* Spacing between buttons */
+        }
+        .game-button:hover {
+            background: linear-gradient(45deg, #00aaff, #00ffff);
+            box-shadow: 0 8px 20px rgba(0, 255, 255, 0.6);
+            transform: translateY(-2px);
+        }
+        .game-button:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(0, 255, 255, 0.4);
+        }
+
+        /* Shop specific styles */
+        #shopItems {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px; /* Gap between cards */
+            margin-top: 30px;
+            max-width: 90%; /* Adjust max width for responsiveness */
+            padding: 10px;
+            overflow-y: auto; /* Enable scrolling if too many items */
+            max-height: 60vh; /* Limit height to prevent overflow on small screens */
+        }
+        .shop-item {
+            background: rgba(255, 255, 255, 0.08); /* Slightly more transparent */
+            border: 2px solid #00ffff;
+            border-radius: 12px; /* Slightly more rounded */
+            padding: 15px;
+            width: 180px; /* Fixed width for cards */
+            min-height: 250px; /* Ensure consistent height */
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4); /* Stronger glow */
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            position: relative; /* For image positioning */
+        }
+        .shop-item:hover {
+            transform: translateY(-8px); /* More pronounced hover */
+            box-shadow: 0 0 25px rgba(0, 255, 255, 0.6);
+        }
+        .shop-item h3 {
+            color: #ff00ff;
+            margin-top: 5px; /* Adjust margin */
+            margin-bottom: 8px;
+            font-size: 1.4em;
+            text-shadow: 0 0 5px #ff00ff;
+        }
+        .shop-item .item-image {
+            width: 70px; /* Size for sprite preview */
+            height: 70px;
+            object-fit: contain; /* Ensure image fits without distortion */
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+        }
+        .shop-item p {
+            font-size: 0.85em;
+            color: #c0c0c0; /* Lighter grey for description */
+            flex-grow: 1;
+            margin-bottom: 12px;
+            line-height: 1.3;
+        }
+        .shop-item .cost {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #00ff00;
+            margin-bottom: 15px;
+            text-shadow: 0 0 3px #00ff00;
+        }
+        .shop-item button {
+            width: 95%; /* Wider button */
+            padding: 10px 15px; /* More padding */
+            font-size: 1em;
+            background: linear-gradient(90deg, #00ff00, #00cc00); /* Brighter green gradient */
+            box-shadow: 0 4px 12px rgba(0, 255, 0, 0.5); /* Stronger button shadow */
+            border-radius: 6px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+        .shop-item button:disabled {
+            background: #444; /* Darker disabled state */
+            color: #aaa;
+            cursor: not-allowed;
+            box-shadow: none;
+            text-shadow: none;
+        }
+        .shop-item button:hover:disabled {
+            transform: none;
+            box-shadow: none;
+        }
+        #exitShopButton {
+            margin-top: 40px; /* More space above the button */
+            padding: 18px 40px; /* Larger exit button */
+            font-size: 1.4em;
+            background: linear-gradient(45deg, #ff6600, #ff0000); /* Orange-red gradient */
+            box-shadow: 0 6px 20px rgba(255, 102, 0, 0.6);
+        }
+        #exitShopButton:hover {
+            background: linear-gradient(45deg, #ff0000, #ff6600);
+            box-shadow: 0 10px 25px rgba(255, 102, 0, 0.8);
+        }
+        #musicControl {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #00ffff;
+            font-size: 0.9em;
+            z-index: 2;
+        }
+        #musicVolume {
+            width: 80px;
+        }
+        #bossHealthBar {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 25px;
+            background-color: #333;
+            border: 2px solid #ff0000;
+            border-radius: 5px;
+            overflow: hidden;
+            display: none; /* Hidden by default */
+            z-index: 2;
+        }
+        #bossHealthFill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to right, #ff0000, #ff9900);
+            transition: width 0.1s ease-out;
+        }
+        #bossHealthText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-shadow: 0 0 3px black;
+        }
+        /* New styles for perk indicators */
+        #perkIndicators {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 2;
+            font-size: 0.9em;
+            color: #fff;
+            text-shadow: 0 0 3px black;
+        }
+        .perk-indicator {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .perk-indicator.cooldown {
+            color: #ffcc00;
+        }
+        .perk-indicator.ready {
+            color: #00ff00;
+        }
+        .perk-indicator.active {
+            color: #00ffff;
+        }
+        .perk-indicator.charging { /* New style for charging state */
+            color: #ff6600;
+        }
+
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .game-title {
+                font-size: 2em;
+            }
+            .game-message {
+                font-size: 1.1em;
+            }
+            .game-button {
+                padding: 10px 20px;
+                font-size: 0.9em;
+            }
+            #scoreboard {
+                font-size: 0.9em;
+                top: 10px;
+                left: 10px;
+            }
+            #shopItems {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+                max-height: 70vh; /* Adjust for smaller screens */
+            }
+            .shop-item {
+                width: 85%;
+                max-width: 280px;
+                padding: 12px;
+                min-height: 200px;
+            }
+            .shop-item h3 {
+                font-size: 1.2em;
+            }
+            .shop-item p {
+                font-size: 0.75em;
+            }
+            .shop-item .cost {
+                font-size: 0.9em;
+            }
+            .shop-item button {
+                font-size: 0.85em;
+                padding: 8px 12px;
+            }
+            #exitShopButton {
+                padding: 15px 30px;
+                font-size: 1.1em;
+                margin-top: 25px;
+            }
+            #musicControl {
+                flex-direction: column;
+                align-items: flex-end;
+                right: 5px;
+                bottom: 5px;
+            }
+            #musicVolume {
+                width: 60px;
+            }
+            #bossHealthBar {
+                width: 80%;
+                height: 20px;
+            }
+            #perkIndicators {
+                top: 10px;
+                right: 10px;
+                font-size: 0.8em;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div id="scoreboard">Score: 0 | Lives: 3 | High Score: 0</div>
-  <div id="startScreen">
-    <div>🚀 Xollent Space Shooter</div>
-    <button id="startButton">Start Game</button>
-  </div>
-  <canvas id="gameCanvas"></canvas>
+    <div id="gameContainer">
+        <div id="scoreboard">Score: 0 | Lives: 3 | High Score: 0</div>
 
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+        <div id="startScreen">
+            <div class="game-title">🚀 Galactic Defender</div>
+            <div class="game-message">Defend the galaxy from invading forces!</div>
+            <button id="startButton" class="game-button">Start Game</button>
+        </div>
 
-    const shootSound = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
-    const hitSound = new Audio("https://actions.google.com/sounds/v1/explosions/explosion.ogg");
-    const backgroundImage = new Image();
-    backgroundImage.src = "https://images.unsplash.com/photo-1532298488760-970ff6decf61?auto=format&fit=crop&w=1500&q=80";
-    const shipImage = new Image();
-    shipImage.src = "image/ship.png";
+        <div id="levelCompleteScreen">
+            <div class="game-title">Level <span id="currentLevelDisplay">1</span> Complete!</div>
+            <div class="game-message">Enemies defeated! Prepare for the next challenge.</div>
+            <button id="goToShopButton" class="game-button">Go to Shop</button>
+            <button id="continueGameButton" class="game-button">Continue Game</button>
+        </div>
 
-    let score = 0;
-    let lives = 3;
-    let highScore = localStorage.getItem("xollentHighScore") || 0;
-    let gameStarted = false;
-    let difficultySpeed = 2;
-    let enemySpawnRate = 1000;
+        <div id="shopScreen">
+            <div class="game-title">🛒 Upgrade Shop</div>
+            <div class="game-message">Current Score: <span id="shopScoreDisplay">0</span></div>
+            <div id="shopItems">
+                <!-- Shop items will be dynamically loaded here -->
+            </div>
+            <button id="exitShopButton" class="game-button">Exit Shop & Continue</button>
+        </div>
 
-    class Spaceship {
-      constructor() {
-        this.x = canvas.width / 2;
-        this.y = canvas.height - 60;
-        this.width = 40;
-        this.height = 40;
-        this.speed = 7;
-      }
+        <div id="gameOverScreen">
+            <div class="game-title">Game Over!</div>
+            <div id="finalScore" class="game-message">Your Score: 0</div>
+            <button id="restartButton" class="game-button">Play Again</button>
+        </div>
 
-      draw() {
-        ctx.drawImage(shipImage, this.x - this.width / 2, this.y, this.width, this.height);
-      }
+        <canvas id="gameCanvas"></canvas>
 
-      move(dir) {
-        this.x += dir * this.speed;
-        if (this.x < 0) this.x = 0;
-        if (this.x > canvas.width) this.x = canvas.width;
-      }
-    }
+        <div id="bossHealthBar">
+            <div id="bossHealthFill"></div>
+            <span id="bossHealthText"></span>
+        </div>
 
-    class Bullet {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = 5;
-        this.speed = 8;
-      }
+        <div id="musicControl">
+            <label for="musicVolume">Music Volume:</label>
+            <input type="range" id="musicVolume" min="-30" max="0" value="-10" step="1">
+        </div>
 
-      update() {
-        this.y -= this.speed;
-      }
+        <div id="perkIndicators">
+            <!-- Perk indicators will be dynamically added here -->
+        </div>
+    </div>
 
-      draw() {
-        ctx.fillStyle = "red";
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    <script>
+        // Ensure Tone.js is available before proceeding
+        if (typeof Tone === 'undefined') {
+            console.error("Tone.js not loaded. Please check the script include.");
+        }
 
-    class Enemy {
-      constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 30;
-        this.height = 30;
-        this.speed = difficultySpeed;
-      }
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreboard = document.getElementById("scoreboard");
+        const startScreen = document.getElementById("startScreen");
+        const gameOverScreen = document.getElementById("gameOverScreen");
+        const levelCompleteScreen = document.getElementById("levelCompleteScreen");
+        const shopScreen = document.getElementById("shopScreen");
+        const startButton = document.getElementById("startButton");
+        const goToShopButton = document.getElementById("goToShopButton");
+        const continueGameButton = document.getElementById("continueGameButton");
+        const exitShopButton = document.getElementById("exitShopButton");
+        const restartButton = document.getElementById("restartButton");
+        const finalScoreDisplay = document.getElementById("finalScore");
+        const currentLevelDisplay = document.getElementById("currentLevelDisplay");
+        const shopScoreDisplay = document.getElementById("shopScoreDisplay");
+        const shopItemsContainer = document.getElementById("shopItems");
+        const musicVolumeControl = document.getElementById("musicVolume");
+        const bossHealthBar = document.getElementById("bossHealthBar");
+        const bossHealthFill = document.getElementById("bossHealthFill");
+        const bossHealthText = document.getElementById("bossHealthText");
+        const perkIndicatorsContainer = document.getElementById("perkIndicators");
 
-      update() {
-        this.y += this.speed;
-      }
 
-      draw() {
-        ctx.fillStyle = "yellow";
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-      }
-    }
+        // Set initial canvas dimensions
+        canvas.width = window.innerWidth > 900 ? 900 : window.innerWidth * 0.9;
+        canvas.height = window.innerHeight > 700 ? 700 : window.innerHeight * 0.8;
 
-    const spaceship = new Spaceship();
-    const bullets = [];
-    const enemies = [];
-    let keys = {};
+        // --- SPRITE LOADING ---
+        // Player Ship Sprites
+        const playerShipImages = {
+            'model_0': new Image(), // Default starting ship (Ship_1.png)
+            'model_1': new Image(), // Upgrade 1 (Ship_2.png)
+            'model_2': new Image()  // Upgrade 2 (Ship_3.png)
+        };
+        playerShipImages['model_0'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/Ship_1.png";
+        playerShipImages['model_1'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/Ship_2.png";
+        playerShipImages['model_2'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/Ship_3.png";
 
-    function spawnEnemy() {
-      const x = Math.random() * (canvas.width - 30);
-      enemies.push(new Enemy(x, -30));
-    }
+        // Add error handling for player ship images
+        for (const key in playerShipImages) {
+            playerShipImages[key].onerror = () => {
+                console.error(`Failed to load player ship sprite: ${playerShipImages[key].src}`);
+                // Fallback to basic shape if image fails to load
+                playerShipType = 'basic_fallback_shape'; // Set a fallback type
+            };
+        }
 
-    function updateScoreboard() {
-      document.getElementById("scoreboard").innerText = `Score: ${score} | Lives: ${lives} | High Score: ${highScore}`;
-    }
+        // Enemy Ship Sprites
+        const enemyShipImages = {
+            'basic': new Image(),    // Common enemy (Ship_4.png)
+            'advanced': new Image(), // Advanced enemy (Ship_5.png)
+            'ufo': new Image()       // New UFO enemy (ufo.png)
+        };
+        enemyShipImages['basic'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/Ship_4.png";
+        enemyShipImages['advanced'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/Ship_5.png";
+        enemyShipImages['ufo'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/ufo.png";
 
-    function increaseDifficulty() {
-      if (enemySpawnRate > 300) enemySpawnRate -= 50;
-      difficultySpeed += 0.2;
-    }
+        // Add error handling for enemy ship images
+        for (const key in enemyShipImages) {
+            enemyShipImages[key].onerror = () => {
+                console.error(`Failed to load enemy ship sprite: ${enemyShipImages[key].src}`);
+                // Fallback to drawing shapes if images fail
+            };
+        }
 
-    function gameLoop() {
-      if (!gameStarted) return;
-      ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
-      spaceship.draw();
+        // Boss Ship Sprites
+        const bossImages = {
+            'level_1_boss': new Image(),
+            'level_2_boss': new Image(),
+            'level_3_boss': new Image(),
+            'level_4_boss': new Image(),
+            'level_5_boss': new Image(),
+            'level_6_boss': new Image(),
+            'level_7_boss': new Image()
+        };
+        bossImages['level_1_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_1_Better_Model_Upgrade.png";
+        bossImages['level_2_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_2_Aerodynamics_Upgrade.png";
+        bossImages['level_3_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_3_Better_Model_Upgrade.png";
+        bossImages['level_4_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_4_Light_Weight_Upgrade.png";
+        bossImages['level_5_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_5_Light_Weight_Upgrade.png";
+        bossImages['level_6_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_6_Light_Weight_Upgrade.png";
+        bossImages['level_7_boss'].src = "https://raw.githubusercontent.com/xohbeats/starship/main/image/TM_7_Better_Model_Upgrade.png";
 
-      bullets.forEach((bullet, index) => {
-        bullet.update();
-        bullet.draw();
-        if (bullet.y < 0) bullets.splice(index, 1);
-      });
 
-      enemies.forEach((enemy, eIndex) => {
-        enemy.update();
-        enemy.draw();
+        for (const key in bossImages) {
+            bossImages[key].onerror = () => {
+                console.error(`Failed to load boss sprite: ${bossImages[key].src}`);
+            };
+        }
+        // --- END SPRITE LOADING ---
 
-        // Bullet collision
-        bullets.forEach((bullet, bIndex) => {
-          if (
-            bullet.x > enemy.x &&
-            bullet.x < enemy.x + enemy.width &&
-            bullet.y > enemy.y &&
-            bullet.y < enemy.y + enemy.height
-          ) {
-            enemies.splice(eIndex, 1);
-            bullets.splice(bIndex, 1);
-            score += 10;
-            hitSound.play();
-            updateScoreboard();
-            if (score % 100 === 0) increaseDifficulty();
-          }
+
+        // Game state variables
+        let score = 0;
+        let lives = 3;
+        let maxLives = 3; // New: for health upgrades
+        let highScore = localStorage.getItem("galacticDefenderHighScore") || 0;
+        let gameStarted = false;
+        let currentLevel = 1;
+        let enemiesToSpawnThisLevel = 10; // Base enemies per level
+        let enemiesSpawnedThisLevel = 0;
+        let enemiesRemainingThisLevel = 0; // Tracks enemies currently on screen + those yet to spawn
+
+        let difficultySpeed = 2;
+        let enemySpawnRate = 1200; // Milliseconds
+        let lastSpawnTime = 0;
+        let animationFrameId;
+
+        let currentBoss = null; // Stores the active boss object
+
+        // Player upgrade states
+        let playerShipType = 'model_0'; // Start with the default sprite 'model_0'
+        let playerFireRateLevel = 1; // 1 (default), 2, 3
+        let baseFireDelay = 200; // Milliseconds between shots
+        let lastShotTime = 0;
+
+        // --- NEW PERK & ABILITY VARIABLES ---
+        let playerBulletDamage = 1; // Base bullet damage
+        let playerBulletRadius = 4; // Base bullet radius
+        let enemySpeedMultiplier = 1; // Base enemy speed multiplier
+
+        let hasSpacebeam = false; // Unlocked via shop
+        let spacebeamCooldown = 15000; // 15 seconds
+        let lastSpacebeamTime = 0;
+        let spacebeamChargeTime = 1400; // 1.4 seconds for charging
+        let spacebeamActiveDuration = 500; // 0.5 seconds
+        let isSpacebeamCharging = false; // New state for charging
+        let isSpacebeamFiring = false;
+        const SPACEBEAM_DAMAGE = 5; // Damage per frame/tick for spacebeam
+
+        let hasShield = false; // Unlocked via shop
+        let shieldCooldown = 20000; // 20 seconds
+        let lastShieldTime = 0;
+        let shieldActiveDuration = 3000; // 3 seconds
+        let isPlayerInvincible = false;
+
+        // UFO Beam specific variables
+        let ufoBeams = []; // Array to hold active UFO beams
+        const UFO_BEAM_COOLDOWN = 5000; // 5 seconds
+        const UFO_BEAM_DURATION = 1000; // 1 second
+        const UFO_BEAM_DAMAGE = 1; // Damage per tick for UFO beam
+        // --- END NEW PERK & ABILITY VARIABLES ---
+
+
+        // Tone.js setup for sound effects
+        const shootSynth = new Tone.Synth({
+            oscillator: { type: "triangle" },
+            envelope: {
+                attack: 0.001,
+                decay: 0.1,
+                sustain: 0.01,
+                release: 0.1
+            }
+        }).toDestination();
+
+        const hitSynth = new Tone.NoiseSynth({
+            envelope: {
+                attack: 0.001,
+                decay: 0.2,
+                sustain: 0.01,
+                release: 0.2
+            }
+        }).toDestination();
+
+        // --- NEW: Dynamic Laser Sounds ---
+        const laserSounds = {
+            // Corrected URLs to use hyphens instead of spaces
+            'model_0': new Tone.Player("https://raw.githubusercontent.com/xohbeats/starship/main/audio/main-player-laser-sound.mp3"),
+            'model_1': new Tone.Player("https://raw.githubusercontent.com/xohbeats/starship/main/audio/ship-2-laser-sound.mp3"),
+            'model_2': new Tone.Player("https://raw.githubusercontent.com/xohbeats/starship/main/audio/ship-3-laser-sound.mp3")
+        };
+
+        // Ensure sounds are loaded and ready
+        for (const key in laserSounds) {
+            laserSounds[key].volume.value = -10; // Set a default volume for laser sounds
+            laserSounds[key].autostart = false; // Don't autostart
+            laserSounds[key].loop = false; // Don't loop
+            laserSounds[key].toDestination(); // Connect to output
+            laserSounds[key].onerror = () => console.error(`Failed to load laser sound: ${laserSounds[key].url}`);
+        }
+
+        // --- NEW: Spacebeam Charging Sound ---
+        const spacebeamChargeSound = new Tone.Player("https://raw.githubusercontent.com/xohbeats/starship/main/audio/spacebeam-audio.mp3");
+        spacebeamChargeSound.volume.value = -5; // Adjust volume as needed
+        spacebeamChargeSound.autostart = false;
+        spacebeamChargeSound.loop = false;
+        spacebeamChargeSound.toDestination(); // Connect to output
+        spacebeamChargeSound.onerror = () => console.error(`Failed to load spacebeam sound: ${spacebeamChargeSound.url}`);
+
+        // --- END NEW: Dynamic Laser Sounds ---
+
+
+        // Background Music Player
+        const backgroundMusic = new Tone.Player({
+            url: "https://raw.githubusercontent.com/xohbeats/starship/main/audio/soundtrack.mp3",
+            loop: true,
+            autostart: false, // Start manually when game begins
+            volume: musicVolumeControl.value // Initial volume from slider
+        }).toDestination();
+
+        // Music volume control event listener
+        musicVolumeControl.addEventListener('input', () => {
+            backgroundMusic.volume.value = parseFloat(musicVolumeControl.value);
         });
 
-        // Enemy hits player
-        if (
-          enemy.y + enemy.height > spaceship.y &&
-          enemy.x < spaceship.x + spaceship.width / 2 &&
-          enemy.x + enemy.width > spaceship.x - spaceship.width / 2
-        ) {
-          enemies.splice(eIndex, 1);
-          lives -= 1;
-          hitSound.play();
-          updateScoreboard();
-          if (lives <= 0) {
-            if (score > highScore) {
-              localStorage.setItem("xollentHighScore", score);
+        // Starfield background
+        class Star {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speed = Math.random() * 0.5 + 0.1;
+                this.opacity = Math.random();
             }
-            alert("Game Over! Your score: " + score);
-            document.location.reload();
-          }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > canvas.height) {
+                    this.y = 0;
+                    this.x = Math.random() * canvas.width;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
-      });
 
-      if (keys["ArrowLeft"]) spaceship.move(-1);
-      if (keys["ArrowRight"]) spaceship.move(1);
+        const stars = [];
+        const numStars = 200; // Increased number of stars for better coverage
+        for (let i = 0; i < numStars; i++) {
+            stars.push(new Star());
+        }
 
-      requestAnimationFrame(gameLoop);
-    }
+        // Player Spaceship
+        class PlayerSpaceship {
+            constructor() {
+                this.width = 80; // Display width of the ship (adjusted for new sprites)
+                this.height = 80; // Display height of the ship (adjusted for new sprites)
+                this.x = canvas.width / 2;
+                this.y = canvas.height - this.height - 30;
+                this.speed = 7;
+                this.dx = 0; // Delta X for smooth movement
+                this.dy = 0; // Delta Y for smooth movement
+            }
 
-    let spawnInterval;
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
 
-    document.getElementById("startButton").addEventListener("click", () => {
-      document.getElementById("startScreen").style.display = "none";
-      gameStarted = true;
-      spawnInterval = setInterval(spawnEnemy, enemySpawnRate);
-      updateScoreboard();
-      gameLoop();
-    });
+                const currentShipImage = playerShipImages[playerShipType];
 
-    window.addEventListener("keydown", (e) => {
-      keys[e.key] = true;
-      if (e.key === " ") {
-        bullets.push(new Bullet(spaceship.x, spaceship.y));
-        shootSound.play();
-      }
-    });
+                if (currentShipImage && currentShipImage.complete && currentShipImage.naturalWidth !== 0) {
+                    // Draw the loaded sprite image
+                    ctx.drawImage(currentShipImage, -this.width / 2, -this.height / 2, this.width, this.height);
+                } else {
+                    // Fallback to a basic shape if image not loaded or failed
+                    ctx.fillStyle = '#00ffff'; // Cyan body
+                    ctx.beginPath();
+                    ctx.moveTo(0, -this.height / 2); // Top point
+                    ctx.lineTo(this.width / 2, this.height / 2); // Bottom right
+                    ctx.lineTo(-this.width / 2, this.height / 2); // Bottom left
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#66ccff'; // Lighter blue for cockpit
+                    ctx.beginPath();
+                    ctx.arc(0, -this.height / 4, this.width * 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
-    window.addEventListener("keyup", (e) => {
-      keys[e.key] = false;
-    });
-  </script>
+                // Draw Shield if active
+                if (isPlayerInvincible) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.width * 0.7, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.7)'; // Cyan glow
+                    ctx.lineWidth = 5;
+                    ctx.shadowColor = 'rgba(0, 255, 255, 1)';
+                    ctx.shadowBlur = 20;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0; // Reset shadow
+                }
+
+
+                // Engine exhaust (dynamic, common to all ships, can be removed if part of sprite)
+                ctx.fillStyle = `rgba(255, ${Math.random() * 100 + 150}, 0, 0.8)`;
+                ctx.beginPath();
+                ctx.moveTo(-this.width * 0.3, this.height / 2);
+                ctx.lineTo(this.width * 0.3, this.height / 2);
+                ctx.lineTo(this.width * 0.2, this.height / 2 + Math.random() * 10 + 10);
+                ctx.lineTo(-this.width * 0.2, this.height / 2 + Math.random() * 10 + 10);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            move(dirX, dirY) {
+                this.dx = dirX * this.speed;
+                this.dy = dirY * this.speed;
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+
+                // Boundary checks for X-axis
+                if (this.x - this.width / 2 < 0) this.x = this.width / 2;
+                if (this.x + this.width / 2 > canvas.width) this.x = canvas.width - this.width / 2;
+
+                // Boundary checks for Y-axis
+                if (this.y - this.height / 2 < 0) this.y = this.height / 2;
+                if (this.y + this.height / 2 > canvas.height) this.y = canvas.height - this.height / 2;
+
+                this.dx *= 0.8; // Decelerate X
+                this.dy *= 0.8; // Decelerate Y
+            }
+        }
+
+        // Player Bullet
+        class Bullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = playerBulletRadius; // Dynamic radius
+                this.speed = 10;
+                this.damage = playerBulletDamage; // Dynamic damage
+            }
+
+            update() {
+                this.y -= this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = "lime"; // Green bullet
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.shadowColor = "lime";
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+        }
+
+        // Enemy Bullet (fired by bosses/advanced enemies)
+        class EnemyBullet {
+            constructor(x, y, targetX, targetY) {
+                this.x = x;
+                this.y = y;
+                this.radius = 6;
+                this.speed = 5; // Slower than player bullets
+                this.damage = 1; // Enemy bullets deal 1 damage
+
+                // Calculate direction towards target
+                const angle = Math.atan2(targetY - y, targetX - x);
+                this.dx = Math.cos(angle) * this.speed;
+                this.dy = Math.sin(angle) * this.speed;
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+            }
+
+            draw() {
+                ctx.fillStyle = "orange"; // Orange enemy bullet
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.shadowColor = "orange";
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+        }
+        const enemyBullets = []; // Array to hold enemy bullets
+
+        // UFO Abduction Beam Class
+        class UfoBeam {
+            constructor(ufoX, ufoY, ufoWidth) {
+                this.x = ufoX;
+                this.y = ufoY + ufoWidth / 2; // Start from bottom of UFO
+                this.width = ufoWidth * 0.8; // Beam width
+                this.height = canvas.height - this.y; // Extends to bottom of canvas
+                this.damage = UFO_BEAM_DAMAGE;
+                this.activeDuration = UFO_BEAM_DURATION;
+                this.startTime = performance.now();
+            }
+
+            update(timestamp) {
+                // Beam is active for a fixed duration
+                if (timestamp - this.startTime > this.activeDuration) {
+                    return false; // Mark for removal
+                }
+                return true; // Still active
+            }
+
+            draw() {
+                ctx.save();
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Green beam
+                ctx.shadowColor = 'rgba(0, 255, 0, 1)';
+                ctx.shadowBlur = 15;
+                ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+        }
+        let ufoBeamsActive = []; // Array to hold active UFO beams
+
+
+        // Base Enemy Class
+        class Enemy {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.width = 60; // Display width of the enemy ship (adjusted for new sprites)
+                this.height = 60; // Display height of the enemy ship (adjusted for new sprites)
+                this.speed = difficultySpeed * enemySpeedMultiplier; // Apply enemy slow perk
+                this.type = type; // e.g., 'basic', 'advanced', 'ufo'
+                this.health = 1;
+                this.oscillationOffset = Math.random() * Math.PI * 2; // For frantic movement
+                this.trackingSpeed = 0.05; // How fast enemies track the player
+
+                // UFO specific
+                this.lastUfoBeamTime = 0;
+                this.ufoBeamCooldown = UFO_BEAM_COOLDOWN;
+
+
+                if (type === 'advanced') {
+                    this.health = 3; // Advanced enemies have more health
+                } else if (type === 'ufo') {
+                    this.health = 2; // UFOs have medium health
+                    this.speed = (difficultySpeed * enemySpeedMultiplier) * 0.7; // UFOs are slower
+                }
+            }
+
+            update(timestamp) {
+                this.y += this.speed;
+
+                // Attract feature: move towards player's X
+                if (player) {
+                    const directionX = player.x - this.x;
+                    this.x += directionX * this.trackingSpeed; // Subtle tracking
+                }
+
+
+                if (this.type === 'advanced') {
+                    // Frantic movement: oscillate left and right
+                    this.x += Math.sin(performance.now() * 0.01 + this.oscillationOffset) * 2; // Adjust multiplier for intensity
+                    // Keep advanced enemy within horizontal bounds
+                    if (this.x < this.width / 2) this.x = this.width / 2;
+                    if (this.x > canvas.width - this.width / 2) this.x = canvas.width - this.width / 2;
+                } else if (this.type === 'ufo') {
+                    // Slower scroll-down, but still with some subtle horizontal drift
+                    this.x += Math.sin(performance.now() * 0.005 + this.oscillationOffset) * 0.5; // Slower, less intense drift
+                    if (this.x < this.width / 2) this.x = this.width / 2;
+                    if (this.x > canvas.width - this.width / 2) this.x = canvas.width - this.width / 2;
+
+                    // UFO Abduction Beam attack
+                    if (timestamp - this.lastUfoBeamTime > this.ufoBeamCooldown && this.y > 0 && this.y < canvas.height * 0.6) { // Only fire if on screen and not too low
+                        ufoBeamsActive.push(new UfoBeam(this.x, this.y, this.width));
+                        this.lastUfoBeamTime = timestamp;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                const currentEnemyImage = enemyShipImages[this.type];
+
+                if (currentEnemyImage && currentEnemyImage.complete && currentEnemyImage.naturalWidth !== 0) {
+                    // Draw the loaded sprite image
+                    ctx.drawImage(currentEnemyImage, -this.width / 2, -this.height / 2, this.width, this.height);
+                } else {
+                    // Fallback to drawing shapes if images fail
+                    if (this.type === 'basic') {
+                        ctx.fillStyle = '#ff0000'; // Red body
+                        ctx.beginPath();
+                        ctx.moveTo(0, this.height / 2);
+                        ctx.lineTo(this.width / 2, -this.height / 2);
+                        ctx.lineTo(-this.width / 2, -this.height / 2);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (this.type === 'advanced') {
+                        ctx.fillStyle = '#ffff00'; // Yellow body for advanced
+                        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+                    } else if (this.type === 'ufo') {
+                        ctx.fillStyle = '#9900ff'; // Purple body for UFO
+                        ctx.beginPath();
+                        ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // Optionally draw health bar for multi-hit enemies
+                if (this.health > 0 && this.health < (this.type === 'advanced' ? 3 : (this.type === 'ufo' ? 2 : 1))) {
+                    const barWidth = this.width * 0.8;
+                    const barHeight = 4;
+                    const barX = -barWidth / 2;
+                    const barY = -this.height / 2 - barHeight - 2; // Above the enemy
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(barX, barY, barWidth, barHeight);
+                    const maxEnemyHealth = (this.type === 'advanced' ? 3 : (this.type === 'ufo' ? 2 : 1));
+                    ctx.fillStyle = `hsl(${this.health / maxEnemyHealth * 120}, 100%, 50%)`; // Green to red
+                    ctx.fillRect(barX, barY, barWidth * (this.health / maxEnemyHealth), barHeight);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Boss Class
+        class Boss {
+            constructor(type) {
+                this.type = type;
+                this.width = 150; // Boss size
+                this.height = 150;
+                this.x = canvas.width / 2;
+                this.y = 100; // Start higher up
+                this.speed = 1.5; // Base boss horizontal speed
+                this.dx = this.speed;
+                this.initialHealth = 10;
+                this.fireRate = 1000; // Milliseconds between shots
+
+                // Define specific properties for each boss type
+                switch (type) {
+                    case 'level_1_boss':
+                        this.initialHealth = 10;
+                        this.fireRate = 1000;
+                        this.speed = 1.5;
+                        break;
+                    case 'level_2_boss':
+                        this.initialHealth = 15;
+                        this.fireRate = 800;
+                        this.speed = 1.8;
+                        break;
+                    case 'level_3_boss':
+                        this.initialHealth = 20;
+                        this.fireRate = 700;
+                        this.speed = 2.0;
+                        break;
+                    case 'level_4_boss':
+                        this.initialHealth = 25;
+                        this.fireRate = 600;
+                        this.speed = 2.2;
+                        break;
+                    case 'level_5_boss':
+                        this.initialHealth = 30;
+                        this.fireRate = 550;
+                        this.speed = 2.5;
+                        break;
+                    case 'level_6_boss':
+                        this.initialHealth = 35;
+                        this.fireRate = 500;
+                        this.speed = 2.7;
+                        break;
+                    case 'level_7_boss':
+                        this.initialHealth = 40;
+                        this.fireRate = 450;
+                        this.speed = 3.0;
+                        break;
+                    default:
+                        // Fallback for undefined bosses
+                        this.initialHealth = 5;
+                        this.fireRate = 1500;
+                        this.speed = 1.0;
+                        break;
+                }
+
+                this.health = this.initialHealth;
+                this.lastFireTime = 0;
+            }
+
+            update(timestamp) {
+                // Horizontal movement
+                this.x += this.dx;
+                if (this.x + this.width / 2 > canvas.width || this.x - this.width / 2 < 0) {
+                    this.dx *= -1; // Reverse direction
+                }
+
+                // Firing logic (Boss targets player)
+                if (timestamp - this.lastFireTime > this.fireRate) {
+                    // Fire bullet directly at player's current position
+                    enemyBullets.push(new EnemyBullet(this.x, this.y + this.height / 2, player.x, player.y));
+                    this.lastFireTime = timestamp;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                const currentBossImage = bossImages[this.type];
+
+                if (currentBossImage && currentBossImage.complete && currentBossImage.naturalWidth !== 0) {
+                    ctx.drawImage(currentBossImage, -this.width / 2, -this.height / 2, this.width, this.height);
+                } else {
+                    // Fallback shape for boss
+                    ctx.fillStyle = '#8800ff'; // Purple
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(-this.width * 0.1, -this.height * 0.7, this.width * 0.2, this.height * 0.2);
+                }
+
+                ctx.restore();
+            }
+
+            updateHealthBar() {
+                bossHealthBar.style.display = 'block';
+                const healthPercentage = (this.health / this.initialHealth) * 100;
+                bossHealthFill.style.width = `${healthPercentage}%`;
+                bossHealthFill.style.background = `linear-gradient(to right, hsl(${healthPercentage * 1.2}, 100%, 50%), #ff9900)`; // Color changes with health
+                bossHealthText.innerText = `BOSS: ${this.health}/${this.initialHealth}`;
+            }
+
+            hideHealthBar() {
+                bossHealthBar.style.display = 'none';
+            }
+        }
+
+
+        const player = new PlayerSpaceship();
+        const bullets = [];
+        const enemies = [];
+        let keys = {};
+
+        // Shop Items Definition
+        const shopItems = [
+            {
+                id: 'ship_model_1',
+                name: 'Model 1 Fighter',
+                description: 'An improved basic fighter.',
+                cost: 100,
+                type: 'ship',
+                upgradeTo: 'model_1',
+                previewImage: playerShipImages['model_1'],
+                purchased: false
+            },
+            {
+                id: 'ship_model_2',
+                name: 'Model 2 Interceptor',
+                description: 'Faster and more agile. Requires Model 1.',
+                cost: 250,
+                type: 'ship',
+                upgradeTo: 'model_2',
+                requires: 'ship_model_1',
+                previewImage: playerShipImages['model_2'],
+                purchased: false
+            },
+            {
+                id: 'firerate_2',
+                name: 'Rapid Fire I',
+                description: 'Increases your firing speed.',
+                cost: 75,
+                type: 'firerate',
+                level: 2,
+                purchased: false
+            },
+            {
+                id: 'firerate_3',
+                name: 'Rapid Fire II',
+                description: 'Further increases firing speed. Requires Rapid Fire I.',
+                cost: 175,
+                type: 'firerate',
+                level: 3,
+                requires: 'firerate_2',
+                purchased: false
+            },
+            {
+                id: 'health_1',
+                name: 'Hull Reinforcement',
+                description: 'Adds 1 extra life.',
+                cost: 120,
+                type: 'health',
+                purchased: false
+            },
+            // --- NEW SHOP ITEMS FOR PERKS ---
+            {
+                id: 'perk_spacebeam',
+                name: 'Spacebeam',
+                description: 'Unlock a powerful laser beam (Z key).',
+                cost: 300,
+                type: 'perk_ability',
+                ability: 'spacebeam',
+                purchased: false
+            },
+            {
+                id: 'perk_shield',
+                name: 'Deflector Shield',
+                description: 'Unlock temporary invincibility (X key).',
+                cost: 350,
+                type: 'perk_ability',
+                ability: 'shield',
+                purchased: false
+            },
+            {
+                id: 'perk_double_damage',
+                name: 'Double Damage',
+                description: 'Permanently double your bullet damage.',
+                cost: 200,
+                type: 'perk_permanent',
+                effect: 'double_damage',
+                purchased: false
+            },
+            {
+                id: 'perk_mega_bullets',
+                name: 'Mega Bullets',
+                description: 'Permanently increase your bullet size.',
+                cost: 150,
+                type: 'perk_permanent',
+                effect: 'mega_bullets',
+                purchased: false
+            },
+            {
+                id: 'perk_enemy_slow',
+                name: 'Enemy Slow',
+                description: 'Permanently reduce enemy movement speed.',
+                cost: 250,
+                type: 'perk_permanent',
+                effect: 'enemy_slow',
+                purchased: false
+            }
+            // --- END NEW SHOP ITEMS ---
+        ];
+
+        // Event Listeners for player movement and shooting
+        window.addEventListener("keydown", (e) => {
+            if (gameStarted) {
+                keys[e.key] = true;
+                const now = performance.now();
+
+                // Regular shooting
+                if (e.key === " ") {
+                    // Check if enough time has passed since the last shot based on fire rate
+                    if (now - lastShotTime > (baseFireDelay / playerFireRateLevel)) {
+                        // Play the specific laser sound for the current ship type
+                        const currentLaserSound = laserSounds[playerShipType];
+                        if (currentLaserSound && currentLaserSound.loaded) {
+                            // Stop and restart if already playing to allow rapid fire sound
+                            if (currentLaserSound.state === 'started') { // Only stop if playing
+                                currentLaserSound.stop();
+                            }
+                            currentLaserSound.start(Tone.now()); // Start from now
+                        } else {
+                            // Fallback to a generic synth sound if specific sound not loaded
+                            shootSynth.triggerAttackRelease("C4", "8n");
+                        }
+                        bullets.push(new Bullet(player.x, player.y - player.height / 2));
+                        lastShotTime = now;
+                    }
+                }
+
+                // Spacebeam activation
+                if (e.key.toLowerCase() === "z" && hasSpacebeam && !isSpacebeamFiring && !isSpacebeamCharging) {
+                    if (now - lastSpacebeamTime > spacebeamCooldown) {
+                        isSpacebeamCharging = true;
+                        lastSpacebeamTime = now; // Start cooldown and charge time now
+
+                        // Play spacebeam charging sound
+                        if (spacebeamChargeSound.loaded) {
+                            if (spacebeamChargeSound.state === 'started') { // Only stop if playing
+                                spacebeamChargeSound.stop();
+                            }
+                            spacebeamChargeSound.start(Tone.now());
+                        }
+
+                        // Set a timeout to activate the beam after charging
+                        setTimeout(() => {
+                            isSpacebeamCharging = false;
+                            isSpacebeamFiring = true;
+                            // Set a timeout to deactivate beam after its active duration
+                            setTimeout(() => {
+                                isSpacebeamFiring = false;
+                                console.log("Spacebeam deactivated.");
+                            }, spacebeamActiveDuration);
+                            console.log("Spacebeam activated!");
+                        }, spacebeamChargeTime);
+                        console.log("Spacebeam charging...");
+                    } else {
+                        console.log("Spacebeam on cooldown!");
+                    }
+                }
+
+                // Shield activation
+                if (e.key.toLowerCase() === "x" && hasShield && !isPlayerInvincible) {
+                    if (now - lastShieldTime > shieldCooldown) {
+                        isPlayerInvincible = true;
+                        lastShieldTime = now;
+                        // Set a timeout to deactivate shield
+                        setTimeout(() => {
+                            isPlayerInvincible = false;
+                            console.log("Shield deactivated.");
+                        }, shieldActiveDuration);
+                        console.log("Shield activated!");
+                    } else {
+                        console.log("Shield on cooldown!");
+                    }
+                }
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            if (gameStarted) {
+                keys[e.key] = false;
+            }
+        });
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth > 900 ? 900 : window.innerWidth * 0.9;
+            canvas.height = window.innerHeight > 700 ? 700 : window.innerHeight * 0.8;
+            // Reposition player if necessary
+            player.x = canvas.width / 2;
+            player.y = canvas.height - player.height - 30;
+            // Clear and redraw everything
+            if (gameStarted) {
+                cancelAnimationFrame(animationFrameId);
+                gameLoop(0); // Restart loop with current timestamp
+            }
+        });
+
+        function spawnEnemy(timestamp) {
+            if (!gameStarted || enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel) return;
+            if (currentBoss) return; // Don't spawn regular enemies if boss is active
+
+            // Only spawn if enough time has passed since last spawn
+            if (timestamp - lastSpawnTime > enemySpawnRate) {
+                const x = Math.random() * (canvas.width - 60) + 30; // Ensure enemy spawns within bounds
+                const enemyTypes = ['basic', 'basic', 'basic', 'advanced', 'ufo']; // Adjust probabilities for enemy types
+                const randomType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+                const newEnemy = new Enemy(x, -50, randomType);
+                
+                enemies.push(newEnemy);
+                enemiesSpawnedThisLevel++;
+                enemiesRemainingThisLevel++; // Increment count of enemies to defeat for level
+                lastSpawnTime = timestamp;
+            }
+        }
+
+        function updateScoreboard() {
+            scoreboard.innerText = `Score: ${score} | Lives: ${lives}/${maxLives} | High Score: ${highScore} | Level: ${currentLevel}`;
+        }
+
+        function updatePerkIndicators(timestamp) {
+            perkIndicatorsContainer.innerHTML = ''; // Clear previous indicators
+
+            // Spacebeam Indicator
+            if (hasSpacebeam) {
+                const timeSinceLastBeam = timestamp - lastSpacebeamTime;
+                const remainingCooldown = Math.max(0, spacebeamCooldown - timeSinceLastBeam);
+                let status = 'ready';
+                let text = `Spacebeam: READY (Z)`;
+
+                if (isSpacebeamCharging) {
+                    const chargeProgress = (timestamp - lastSpacebeamTime) / spacebeamChargeTime;
+                    const remainingCharge = Math.max(0, spacebeamChargeTime - (timestamp - lastSpacebeamTime));
+                    status = 'charging';
+                    text = `Spacebeam: CHARGING (${Math.ceil(remainingCharge / 1000)}s)`;
+                } else if (isSpacebeamFiring) {
+                    status = 'active';
+                    text = `Spacebeam: ACTIVE`;
+                } else if (remainingCooldown > 0) {
+                    status = 'cooldown';
+                    text = `Spacebeam: ${Math.ceil(remainingCooldown / 1000)}s CD`;
+                }
+                const indicator = `<div class="perk-indicator ${status}">${text}</div>`;
+                perkIndicatorsContainer.innerHTML += indicator;
+            }
+
+            // Shield Indicator
+            if (hasShield) {
+                const timeSinceLastShield = timestamp - lastShieldTime;
+                const remainingCooldown = Math.max(0, shieldCooldown - timeSinceLastShield);
+                const status = isPlayerInvincible ? 'active' : (remainingCooldown > 0 ? 'cooldown' : 'ready');
+                const text = isPlayerInvincible ? `Shield: ACTIVE` : (remainingCooldown > 0 ? `Shield: ${Math.ceil(remainingCooldown / 1000)}s CD` : `Shield: READY (X)`);
+                const indicator = `<div class="perk-indicator ${status}">${text}</div>`;
+                perkIndicatorsContainer.innerHTML += indicator;
+            }
+
+            // Permanent Perk Indicators (just show if owned)
+            if (playerBulletDamage > 1) {
+                perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Double Damage</div>`;
+            }
+            if (playerBulletRadius > 4) { // Assuming 4 is base radius
+                perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Mega Bullets</div>`;
+            }
+            if (enemySpeedMultiplier < 1) { // Assuming 1 is base multiplier
+                perkIndicatorsContainer.innerHTML += `<div class="perk-indicator active">Enemy Slow</div>`;
+            }
+        }
+
+
+        function increaseDifficulty() {
+            difficultySpeed += 0.15; // Increase base enemy speed
+            if (enemySpawnRate > 300) enemySpawnRate -= 30; // Decrease spawn interval, but not too fast
+            enemiesToSpawnThisLevel += 7; // More enemies per level
+            console.log(`Difficulty increased! Spawn Rate: ${enemySpawnRate}, Speed: ${difficultySpeed.toFixed(1)}, Enemies: ${enemiesToSpawnThisLevel}`);
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            maxLives = 3;
+            currentLevel = 1;
+            playerShipType = 'model_0'; // Reset to the default sprite
+            playerFireRateLevel = 1;
+            enemiesToSpawnThisLevel = 10;
+            enemiesSpawnedThisLevel = 0;
+            enemiesRemainingThisLevel = 0;
+            difficultySpeed = 2;
+            enemySpawnRate = 1200;
+            bullets.length = 0; // Clear arrays
+            enemies.length = 0;
+            enemyBullets.length = 0; // Clear enemy bullets
+            ufoBeamsActive.length = 0; // Clear UFO beams
+            currentBoss = null; // Clear any active boss
+            bossHealthBar.style.display = 'none'; // Hide boss health bar
+
+            // Reset perk states
+            playerBulletDamage = 1;
+            playerBulletRadius = 4;
+            enemySpeedMultiplier = 1;
+            hasSpacebeam = false;
+            isSpacebeamCharging = false; // Reset charging state
+            isSpacebeamFiring = false;
+            lastSpacebeamTime = 0;
+            hasShield = false;
+            isPlayerInvincible = false;
+            lastShieldTime = 0;
+            perkIndicatorsContainer.innerHTML = ''; // Clear perk indicators
+
+            player.x = canvas.width / 2;
+            player.y = canvas.height - player.height - 30;
+
+            // Reset shop items purchased status
+            shopItems.forEach(item => item.purchased = false);
+
+            updateScoreboard();
+            hideAllScreens();
+            gameStarted = true;
+            animationFrameId = requestAnimationFrame(gameLoop);
+            if (backgroundMusic.state === 'started') { // Only stop if playing
+                backgroundMusic.stop();
+            }
+        }
+
+        function hideAllScreens() {
+            startScreen.style.display = "none";
+            gameOverScreen.style.display = "none";
+            levelCompleteScreen.style.display = "none";
+            shopScreen.style.display = "none";
+        }
+
+        function showLevelCompleteScreen() {
+            gameStarted = false;
+            cancelAnimationFrame(animationFrameId);
+            currentLevelDisplay.innerText = currentLevel;
+            levelCompleteScreen.style.display = "flex";
+            if (backgroundMusic.state === 'started') { // Only stop if playing
+                backgroundMusic.stop();
+            }
+            bossHealthBar.style.display = 'none'; // Ensure boss health bar is hidden
+        }
+
+        function showShopScreen() {
+            hideAllScreens();
+            shopScreen.style.display = "flex";
+            shopScoreDisplay.innerText = score;
+            renderShopItems();
+            if (backgroundMusic.state === 'started') { // Only stop if playing
+                backgroundMusic.stop();
+            }
+        }
+
+        function renderShopItems() {
+            shopItemsContainer.innerHTML = ''; // Clear previous items
+            shopItems.forEach(item => {
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add('shop-item');
+
+                let imageHtml = '';
+                // Only show image for ship type items
+                if (item.type === 'ship' && item.previewImage && item.previewImage.complete && item.previewImage.naturalWidth !== 0) {
+                    imageHtml = `<img src="${item.previewImage.src}" alt="${item.name}" class="item-image">`;
+                } else if (item.type === 'ship') {
+                    // Fallback for ship image if not loaded
+                    imageHtml = `<div class="item-image" style="background-color:#555; display:flex; justify-content:center; align-items:center; color:white; font-size:0.8em;">No Image</div>`;
+                }
+
+                itemDiv.innerHTML = `
+                    ${imageHtml}
+                    <h3>${item.name}</h3>
+                    <p>${item.description}</p>
+                    <div class="cost">Cost: ${item.cost} Score</div>
+                    <button id="buy-${item.id}" class="game-button">${item.purchased ? 'Purchased' : 'Buy'}</button>
+                `;
+                const buyButton = itemDiv.querySelector(`#buy-${item.id}`);
+
+                // Disable if already purchased
+                if (item.purchased) {
+                    buyButton.disabled = true;
+                }
+                // Disable if not enough score
+                if (score < item.cost) {
+                    buyButton.disabled = true;
+                    buyButton.innerText = 'Too Expensive';
+                }
+                // Disable if requirements not met
+                if (item.requires) {
+                    const requiredItem = shopItems.find(si => si.id === item.requires);
+                    if (!requiredItem || !requiredItem.purchased) {
+                        buyButton.disabled = true;
+                        buyButton.innerText = `Requires ${requiredItem ? requiredItem.name : 'Previous Upgrade'}`;
+                    }
+                }
+                // Specific logic for health upgrade (only one purchase allowed and if at max lives)
+                if (item.type === 'health') {
+                    if (item.purchased) {
+                        buyButton.disabled = true;
+                        buyButton.innerText = 'Purchased';
+                    } else if (lives === maxLives) {
+                        buyButton.disabled = true;
+                        buyButton.innerText = 'Max Health';
+                    }
+                }
+                // Specific logic for ship upgrades: disable if current ship is already this model or higher
+                if (item.type === 'ship') {
+                    // Map current player ship type to an index for comparison
+                    const playerShipModels = ['model_0', 'model_1', 'model_2'];
+                    const currentShipIndex = playerShipModels.indexOf(playerShipType);
+                    const upgradeShipIndex = playerShipModels.indexOf(item.upgradeTo);
+
+                    if (upgradeShipIndex <= currentShipIndex) {
+                        buyButton.disabled = true;
+                        buyButton.innerText = 'Equipped';
+                        if (upgradeShipIndex < currentShipIndex) {
+                             buyButton.innerText = 'Owned';
+                        }
+                    }
+                }
+                // Specific logic for perk_ability and perk_permanent: disable if already purchased
+                if (item.type === 'perk_ability' || item.type === 'perk_permanent') {
+                    if (item.purchased) {
+                        buyButton.disabled = true;
+                        buyButton.innerText = 'Purchased';
+                    }
+                }
+
+
+                buyButton.addEventListener('click', () => purchaseItem(item));
+                shopItemsContainer.appendChild(itemDiv);
+            });
+        }
+
+        function purchaseItem(item) {
+            if (score >= item.cost && !item.purchased) {
+                // Check specific requirements
+                if (item.requires) {
+                    const requiredItem = shopItems.find(si => si.id === item.requires);
+                    if (!requiredItem || !requiredItem.purchased) {
+                        console.log(`Cannot purchase ${item.name}: Requires ${requiredItem.name}`);
+                        return;
+                    }
+                }
+
+                score -= item.cost;
+                item.purchased = true; // Mark as purchased
+
+                // Apply upgrade effect
+                if (item.type === 'ship') {
+                    playerShipType = item.upgradeTo;
+                } else if (item.type === 'firerate') {
+                    playerFireRateLevel = item.level;
+                } else if (item.type === 'health') {
+                    maxLives += 1; // Increase max lives
+                    lives = Math.min(lives + 1, maxLives); // Also heal by 1, up to new max
+                } else if (item.type === 'perk_ability') {
+                    if (item.ability === 'spacebeam') {
+                        hasSpacebeam = true;
+                        lastSpacebeamTime = performance.now() - spacebeamCooldown; // Make it ready immediately
+                    } else if (item.ability === 'shield') {
+                        hasShield = true;
+                        lastShieldTime = performance.now() - shieldCooldown; // Make it ready immediately
+                    }
+                } else if (item.type === 'perk_permanent') {
+                    if (item.effect === 'double_damage') {
+                        playerBulletDamage *= 2;
+                    } else if (item.effect === 'mega_bullets') {
+                        playerBulletRadius *= 2; // Double bullet size
+                    } else if (item.effect === 'enemy_slow') {
+                        enemySpeedMultiplier *= 0.7; // Reduce enemy speed to 70%
+                    }
+                }
+
+                updateScoreboard();
+                shopScoreDisplay.innerText = score; // Update score in shop
+                renderShopItems(); // Re-render shop to update button states
+                console.log(`Purchased ${item.name}! Current score: ${score}`);
+            } else {
+                console.log(`Cannot purchase ${item.name}. Not enough score or already purchased.`);
+            }
+        }
+
+        function startNextLevel() {
+            currentLevel++;
+            increaseDifficulty(); // Increase difficulty for the new level
+            enemiesToSpawnThisLevel = 10 + (currentLevel - 1) * 7; // Scale enemies per level
+            enemiesSpawnedThisLevel = 0;
+            enemiesRemainingThisLevel = 0; // Will be updated by spawnEnemy
+            bullets.length = 0; // Clear player bullets
+            enemies.length = 0; // Clear regular enemies
+            enemyBullets.length = 0; // Clear enemy bullets
+            ufoBeamsActive.length = 0; // Clear UFO beams
+            currentBoss = null; // Ensure no boss from previous level lingers
+            bossHealthBar.style.display = 'none'; // Hide boss health bar
+
+            hideAllScreens();
+            gameStarted = true;
+            animationFrameId = requestAnimationFrame(gameLoop);
+            backgroundMusic.start(); // Start music when level begins
+        }
+
+        function endGame() {
+            gameStarted = false;
+            cancelAnimationFrame(animationFrameId); // Stop the game loop
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("galacticDefenderHighScore", highScore);
+            }
+            finalScoreDisplay.innerText = `Your Score: ${score}`;
+            gameOverScreen.style.display = "flex";
+            updateScoreboard(); // Update scoreboard one last time to show final high score
+            if (backgroundMusic.state === 'started') { // Only stop if playing
+                backgroundMusic.stop();
+            }
+            bossHealthBar.style.display = 'none'; // Ensure boss health bar is hidden
+        }
+
+        function gameLoop(timestamp) {
+            if (!gameStarted) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+            // Update and draw stars
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+
+            // Player movement
+            let dirX = 0;
+            let dirY = 0;
+            if (keys["ArrowLeft"]) dirX = -1;
+            if (keys["ArrowRight"]) dirX = 1;
+            if (keys["ArrowUp"]) dirY = -1;
+            if (keys["ArrowDown"]) dirY = 1;
+            player.move(dirX, dirY); // Pass both directions
+            player.update();
+            player.draw();
+
+            // --- Spacebeam drawing and collision ---
+            if (isSpacebeamCharging) {
+                ctx.save();
+                // Draw charging animation: growing line from player
+                const chargeProgress = (timestamp - lastSpacebeamTime) / spacebeamChargeTime;
+                const beamHeight = player.y * chargeProgress;
+                const beamY = player.y - beamHeight;
+
+                ctx.fillStyle = `rgba(0, 255, 255, ${0.3 + chargeProgress * 0.5})`; // Increase opacity
+                ctx.shadowColor = 'rgba(0, 255, 255, 1)';
+                ctx.shadowBlur = 10 + chargeProgress * 20; // Increase blur
+                ctx.fillRect(player.x - 10, beamY, 20, beamHeight); // Narrower, growing beam
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            } else if (isSpacebeamFiring) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(0, 255, 255, 0.7)'; // Cyan beam
+                ctx.shadowColor = 'rgba(0, 255, 255, 1)';
+                ctx.shadowBlur = 30;
+                // Draw beam from player to top of screen
+                ctx.fillRect(player.x - 20, 0, 40, player.y); // Width 40, extends from top to player's Y
+                ctx.shadowBlur = 0; // Reset shadow
+                ctx.restore();
+
+                // Spacebeam collision with enemies
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const enemy = enemies[i];
+                    // Check if enemy is within the beam's X range and above player
+                    if (enemy.x + enemy.width / 2 > player.x - 20 &&
+                        enemy.x - enemy.width / 2 < player.x + 20 &&
+                        enemy.y + enemy.height / 2 > 0 && // Ensure enemy is on screen
+                        enemy.y - enemy.height / 2 < player.y) {
+
+                        enemy.health -= SPACEBEAM_DAMAGE; // Apply damage
+                        if (enemy.health <= 0) {
+                            enemies.splice(i, 1);
+                            score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10);
+                            enemiesRemainingThisLevel--;
+                        }
+                        hitSynth.triggerAttackRelease("0.05"); // Hit sound for beam
+                        updateScoreboard();
+                    }
+                }
+
+                // Spacebeam collision with boss
+                if (currentBoss) {
+                    if (currentBoss.x + currentBoss.width / 2 > player.x - 20 &&
+                        currentBoss.x - currentBoss.width / 2 < player.x + 20 &&
+                        currentBoss.y + currentBoss.height / 2 > 0 &&
+                        currentBoss.y - currentBoss.height / 2 < player.y) {
+
+                        currentBoss.health -= SPACEBEAM_DAMAGE;
+                        if (currentBoss.health <= 0) {
+                            score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50;
+                            updateScoreboard();
+                            currentBoss.hideHealthBar();
+                            currentBoss = null;
+                            showLevelCompleteScreen();
+                            return;
+                        }
+                        hitSynth.triggerAttackRelease("0.05"); // Hit sound for beam
+                        currentBoss.updateHealthBar();
+                    }
+                }
+            }
+            // --- End Spacebeam ---
+
+
+            // Update and draw player bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.update();
+                bullet.draw();
+                if (bullet.y < 0) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Update and draw enemy bullets
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const eBullet = enemyBullets[i];
+                eBullet.update();
+                eBullet.draw();
+
+                // Check for enemy bullet collision with player
+                if (!isPlayerInvincible) { // Only take damage if not invincible
+                    if (
+                        eBullet.x + eBullet.radius > player.x - player.width / 2 &&
+                        eBullet.x - eBullet.radius < player.x + player.width / 2 &&
+                        eBullet.y + eBullet.radius > player.y - player.height / 2 &&
+                        eBullet.y - eBullet.radius < player.y + player.height / 2
+                    ) {
+                        enemyBullets.splice(i, 1); // Remove bullet
+                        lives -= eBullet.damage; // Player takes damage
+                        hitSynth.triggerAttackRelease("0.2"); // Player hit sound
+                        updateScoreboard();
+                        if (lives <= 0) {
+                            endGame();
+                            return;
+                        }
+                    }
+                }
+
+                if (eBullet.y > canvas.height) {
+                    enemyBullets.splice(i, 1);
+                }
+            }
+
+            // Update and draw UFO beams
+            for (let i = ufoBeamsActive.length - 1; i >= 0; i--) {
+                const ufoBeam = ufoBeamsActive[i];
+                if (!ufoBeam.update(timestamp)) {
+                    ufoBeamsActive.splice(i, 1); // Remove inactive beams
+                    continue;
+                }
+                ufoBeam.draw();
+
+                // Check for UFO beam collision with player
+                if (!isPlayerInvincible) { // Only take damage if not invincible
+                    if (
+                        player.x + player.width / 2 > ufoBeam.x - ufoBeam.width / 2 &&
+                        player.x - player.width / 2 < ufoBeam.x + ufoBeam.width / 2 &&
+                        player.y + player.height / 2 > ufoBeam.y &&
+                        player.y - player.height / 2 < ufoBeam.y + ufoBeam.height
+                    ) {
+                        lives -= ufoBeam.damage; // Player takes damage
+                        hitSynth.triggerAttackRelease("0.2");
+                        updateScoreboard();
+                        ufoBeamsActive.splice(i, 1); // Remove beam after hit
+                        if (lives <= 0) {
+                            endGame();
+                            return;
+                        }
+                    }
+                }
+            }
+
+
+            // Spawn enemies or boss
+            if (!currentBoss) { // Only spawn regular enemies if no boss is active
+                spawnEnemy(timestamp);
+
+                // Check if all regular enemies for the level are spawned and defeated
+                if (enemiesSpawnedThisLevel >= enemiesToSpawnThisLevel && enemies.length === 0) {
+                    // Time to spawn a boss!
+                    let bossType = null;
+                    if (currentLevel === 1) bossType = 'level_1_boss';
+                    else if (currentLevel === 2) bossType = 'level_2_boss';
+                    else if (currentLevel === 3) bossType = 'level_3_boss';
+                    else if (currentLevel === 4) bossType = 'level_4_boss';
+                    else if (currentLevel === 5) bossType = 'level_5_boss';
+                    else if (currentLevel === 6) bossType = 'level_6_boss';
+                    else if (currentLevel === 7) bossType = 'level_7_boss';
+                    // Add more levels here if needed
+
+                    if (bossType) {
+                        currentBoss = new Boss(bossType);
+                    } else {
+                        // For levels beyond defined bosses, proceed to level complete screen
+                        showLevelCompleteScreen();
+                        return;
+                    }
+                }
+            }
+
+
+            // Update and draw enemies, handle collisions
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.update(timestamp); // Pass timestamp for UFO beam
+                enemy.draw();
+
+                // Check for player bullet-enemy collision
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const bullet = bullets[j];
+                    // Simple rectangular collision detection
+                    if (
+                        bullet.x + bullet.radius > enemy.x - enemy.width / 2 &&
+                        bullet.x - bullet.radius < enemy.x + enemy.width / 2 &&
+                        bullet.y + bullet.radius > enemy.y - enemy.height / 2 &&
+                        bullet.y - bullet.radius < enemy.y + enemy.height / 2
+                    ) {
+                        enemy.health -= bullet.damage; // Reduce enemy health
+                        bullets.splice(j, 1); // Remove player bullet
+                        hitSynth.triggerAttackRelease("0.05");
+
+                        if (enemy.health <= 0) {
+                            enemies.splice(i, 1); // Remove enemy if health <= 0
+                            score += (enemy.type === 'advanced') ? 30 : (enemy.type === 'ufo' ? 20 : 10); // Points for different types
+                            enemiesRemainingThisLevel--; // Decrement remaining enemies
+                        }
+                        updateScoreboard();
+                        break; // Only one bullet can hit an enemy
+                    }
+                }
+
+                // Check for enemy-player collision
+                if (!isPlayerInvincible) { // Only take damage if not invincible
+                    if (
+                        enemy.y + enemy.height / 2 > player.y - player.height / 2 &&
+                        enemy.y - enemy.height / 2 < player.y + player.height / 2 &&
+                        enemy.x + enemy.width / 2 > player.x - player.width / 2 &&
+                        enemy.x - player.width / 2 < player.x + player.width / 2
+                    ) {
+                        enemies.splice(i, 1);
+                        lives -= 1;
+                        hitSynth.triggerAttackRelease("0.2");
+                        updateScoreboard();
+                        if (lives <= 0) {
+                            endGame();
+                            return;
+                        }
+                    }
+                }
+
+                // Remove enemies that go off screen
+                if (enemy.y > canvas.height) {
+                    enemies.splice(i, 1);
+                    enemiesRemainingThisLevel--; // Decrement remaining enemies
+                }
+            }
+
+            // Boss update and draw logic
+            if (currentBoss) {
+                currentBoss.update(timestamp);
+                currentBoss.draw();
+                currentBoss.updateHealthBar(); // Update boss health bar UI
+
+                // Check for player bullet-boss collision
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const bullet = bullets[j];
+                    // Simple rectangular collision for boss
+                    if (
+                        bullet.x + bullet.radius > currentBoss.x - currentBoss.width / 2 &&
+                        bullet.x - currentBoss.width / 2 < currentBoss.x + currentBoss.width / 2 &&
+                        bullet.y + bullet.radius > currentBoss.y - currentBoss.height / 2 &&
+                        bullet.y - currentBoss.height / 2 < currentBoss.y + currentBoss.height / 2
+                    ) {
+                        currentBoss.health -= bullet.damage;
+                        bullets.splice(j, 1); // Remove player bullet
+                        hitSynth.triggerAttackRelease("0.05"); // Boss hit sound
+
+                        if (currentBoss.health <= 0) {
+                            score += (currentBoss.type.startsWith('level_')) ? (100 + (currentLevel - 1) * 50) : 50; // Dynamic points for defeating boss
+                            updateScoreboard();
+                            currentBoss.hideHealthBar();
+                            currentBoss = null; // Boss defeated
+                            showLevelCompleteScreen(); // Level complete after boss defeat
+                            return;
+                        }
+                        currentBoss.updateHealthBar(); // Update health bar after hit
+                    }
+                }
+
+                // Check for boss-player collision (if boss can collide with player)
+                if (!isPlayerInvincible) { // Only take damage if not invincible
+                    if (
+                        currentBoss.y + currentBoss.height / 2 > player.y - player.height / 2 &&
+                        currentBoss.y - currentBoss.height / 2 < player.y + player.height / 2 &&
+                        currentBoss.x + currentBoss.width / 2 > player.x - player.width / 2 &&
+                        currentBoss.x - player.width / 2 < player.x + player.width / 2
+                    ) {
+                        // Boss collision with player: remove boss and damage player
+                        currentBoss.health = 0; // Boss is defeated on collision
+                        lives -= 1; // Player takes damage
+                        hitSynth.triggerAttackRelease("0.2");
+                        updateScoreboard();
+                        currentBoss.hideHealthBar();
+                        currentBoss = null; // Boss defeated
+                        if (lives <= 0) {
+                            endGame();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Update perk indicators
+            updatePerkIndicators(timestamp);
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Initial setup
+        updateScoreboard();
+
+        // Start button event listener
+        startButton.addEventListener("click", async () => {
+            // Ensure audio context is started on user gesture
+            await Tone.start();
+            console.log('Audio context started');
+            resetGame();
+            backgroundMusic.start(); // Start music on initial game start
+        });
+
+        // Level Complete Screen buttons
+        goToShopButton.addEventListener("click", () => {
+            showShopScreen();
+        });
+
+        continueGameButton.addEventListener("click", () => {
+            startNextLevel();
+        });
+
+        // Shop Screen button
+        exitShopButton.addEventListener("click", () => {
+            startNextLevel();
+        });
+
+        // Restart button event listener (Game Over screen)
+        restartButton.addEventListener("click", async () => {
+            // Ensure audio context is started on user gesture
+            await Tone.start();
+            console.log('Audio context started on restart');
+            resetGame();
+            backgroundMusic.start(); // Start music on restart
+        });
+
+        // Start the game loop only when the window is loaded and game starts
+        window.onload = async function() {
+            // Pre-load all Tone.js audio buffers
+            await Tone.loaded();
+            console.log("All Tone.js audio buffers loaded!");
+            // Enable the start button once audio is loaded
+            startButton.disabled = false;
+            startButton.innerText = "Start Game";
+        };
+
+        // Initially disable start button until audio is loaded
+        startButton.disabled = true;
+        startButton.innerText = "Loading Audio...";
+    </script>
 </body>
 </html>
